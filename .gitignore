@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# ==========================================
+# CẤU HÌNH BỔ SUNG CHO DỰ ÁN AI & VIDEO
+# ==========================================
+
+# Chặn toàn bộ file video mẫu và ảnh nặng trong dự án
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.jpg
+*.png
+*.jpeg
+
+# Chặn các file trọng số mô hình AI (Rất nặng, >100MB)
+*.pt
+*.pth
+*.h5
+*.onnx
+*.weights
+*.pkl
+
+# Chặn thư mục node_modules của Frontend (nếu sau này dùng React/Vue)
+node_modules/
+.pnpm-store/
+
