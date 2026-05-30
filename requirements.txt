@@ -1,0 +1,18 @@
+# AI & Computer Vision
+ultralytics>=8.3.0
+opencv-python-headless>=4.10.0
+numpy>=1.26.4
+scipy>=1.14.0
+
+# Backend & API
+fastapi>=0.115.0
+uvicorn>=0.30.0
+sqlalchemy>=2.0.30
+websockets>=13.0
+
+# Frontend UI
+streamlit>=1.39.0
+
+# Utilities
+requests>=2.32.0
+pydantic>=2.9.0
