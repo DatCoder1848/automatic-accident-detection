@@ -1,33 +1,17 @@
 import cv2
 import math
 from ultralytics import YOLO
+# Nạp công cụ toán học và Class quản lý phương tiện từ file kinematics.py
+from kinematics import calculate_iou, VehicleTrack
 
-
-# ----------------- HÀM TOÁN HỌC KIỂM TRA VA CHẠM -----------------
-def check_overlap(box1, box2):
-    """Áp dụng công thức tìm vùng giao nhau của 2 Bounding Box"""
-    x1_min, y1_min, x1_max, y1_max = box1
-    x2_min, y2_min, x2_max, y2_max = box2
-
-    x_left = max(x1_min, x2_min)
-    x_right = min(x1_max, x2_max)
-    y_top = max(y1_min, y2_min)
-    y_bottom = min(y1_max, y2_max)
-
-    # Nếu thỏa mãn điều kiện này, 2 hộp đang đè lên nhau
-    if x_left < x_right and y_top < y_bottom:
-        return True
-    return False
-
-
-# -----------------------------------------------------------------
 
 print("Đang khởi động hệ thống...")
 model = YOLO("yolov8n.pt")
 video_path = "../data_storage/video_clips/positive/crash_7.mp4"
 cap = cv2.VideoCapture(video_path)
 
-vehicle_history = {}
+# Dictionary quản lý các đối tượng xe đang xuất hiện trên màn hình thay cho bien vehicle_histories cũ
+active_trackers = {}
 reported_crashes = set() # Bộ nhớ chống spam cảnh báo
 
 while cap.isOpened():
@@ -35,68 +19,74 @@ while cap.isOpened():
     if not success:
         break
 
+    # YOLO Tracking
     results = model.track(frame, classes=[2, 3, 5, 7], persist=True, tracker="bytetrack.yaml", verbose=False)
 
-    # Mảng tạm thời để lưu thông tin của tất cả các xe trong khung hình HIỆN TẠI
-    current_frame_vehicles = []
+    # Danh sách ID các xe xuất hiện TRONG FRAME NÀY
+    current_frame_ids = []
 
     if results[0].boxes.id is not None:
-        boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+        boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.cpu().numpy().astype(int)
 
+        # 1. CẬP NHẬT TRẠNG THÁI CHO TỪNG CHIẾC XE
         for box, track_id in zip(boxes, ids):
-            x_min, y_min, x_max, y_max = box
-            cx = int((x_min + x_max) / 2)
-            cy = int((y_min + y_max) / 2)
+            current_frame_ids.append(track_id)
 
-            speed = 0.0
-            if track_id in vehicle_history:
-                prev_cx, prev_cy = vehicle_history[track_id]
-                speed = math.sqrt((cx - prev_cx) ** 2 + (cy - prev_cy) ** 2)
+            # Nếu đây là xe mới xuất hiện, khởi tạo đối tượng VehicleTrack mới cho nó
+            if track_id not in active_trackers:
+                active_trackers[track_id] = VehicleTrack(track_id)
 
-            vehicle_history[track_id] = (cx, cy)
+            # Gọi hàm update() của đối tượng để nó tự động tính toán vận tốc, gia tốc, tọa độ
+            current_vehicle = active_trackers[track_id]
+            current_vehicle.update(box)
 
-            # Đóng gói dữ liệu xe hiện tại vào mảng
-            current_frame_vehicles.append({
-                "id": track_id,
-                "box": box,
-                "speed": speed,
-                "centroid": (cx, cy)
-            })
+            # Lấy thông số từ đối tượng để vẽ lên màn hình
+            x_min, y_min, x_max, y_max = map(int, box)
 
-            # Vẽ giao diện cơ bản
-            cv2.circle(frame, (cx, cy), 4, (0, 255, 0), -1)
+            # Lấy vận tốc hiện tại (nếu chưa đủ dữ liệu tính thì mặc định là 0)
+            speed = current_vehicle.velocities[-1] if len(current_vehicle.velocities) > 0 else 0.0
+
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (255, 0, 0), 2)
-            cv2.putText(frame, f"ID:{track_id} S:{speed:.1f}", (x_min, y_min - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+            cv2.putText(frame, f"ID:{track_id} v:{speed:.1f}", (x_min, y_min - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-        # ----------------- LOGIC QUÉT VA CHẠM (COLLISION SCANNER) -----------------
-        for i in range(len(current_frame_vehicles)):
-            for j in range(i + 1, len(current_frame_vehicles)):
-                xe_A = current_frame_vehicles[i]
-                xe_B = current_frame_vehicles[j]
+        # 2. LOGIC BẮT VA CHẠM DỰA TRÊN OOP VÀ IOU
+        # Duyệt qua các cặp xe đang có mặt trong frame hiện tại để kiểm tra
+        for i in range(len(current_frame_ids)):
+            for j in range(i + 1, len(current_frame_ids)):
+                id_A = current_frame_ids[i]
+                id_B = current_frame_ids[j]
 
-                # Kiểm tra Không gian: Khung chữ nhật đè lên nhau?
-                if check_overlap(xe_A["box"], xe_B["box"]):
+                vehicle_A = active_trackers[id_A]
+                vehicle_B = active_trackers[id_B]
 
-                    # Tạo một định danh duy nhất cho vụ va chạm này (vd: cặp 1 và 22)
-                    pair_id = tuple(sorted([xe_A["id"], xe_B["id"]]))
+                # Gọi hàm toán học tính tỷ lệ giao nhau của 2 Bounding Box
+                iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
 
-                    # Màng lọc 1: Kiểm tra xem vụ này đã báo động chưa?
+                # NẾU tỷ lệ giao nhau > 10% (0.1) -> Có sự va chạm vật lý hoặc cực kỳ sát nhau
+                if iou_score > 0.1:
+                    pair_id = tuple(sorted([id_A, id_B]))
+
                     if pair_id not in reported_crashes:
+                        # Kiểm tra thêm điều kiện vận tốc để loại bỏ xe đang đỗ cạnh nhau
+                        v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0
+                        v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0
 
-                        # Màng lọc 2: Kiểm tra Động học (Loại bỏ xe đỗ)
-                        if xe_A["speed"] > 2.0 or xe_B["speed"] > 2.0:
-                            cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 50),
+                        if v_A > 2.0 or v_B > 2.0:
+                            cv2.putText(frame, f"TAI NAN: {id_A} & {id_B}", (50, 50),
                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
-                            cv2.line(frame, xe_A["centroid"], xe_B["centroid"], (0, 0, 255), 3)
+                            print(f"[ALARM] Va chạm giữa ID {id_A} và {id_B} | IoU: {iou_score:.2f}")
 
-                            print(f"[ALARM] Xác nhận va chạm vật lý giữa ID {xe_A['id']} và ID {xe_B['id']}")
-
-                            # Lưu vào bộ nhớ để khóa cảnh báo cho cặp ID này
                             reported_crashes.add(pair_id)
 
-    cv2.imshow("He Thong Phat Hien Tai Nan", frame)
+    # 3. DỌN DẸP BỘ NHỚ (Memory Management)
+    # Xóa các đối tượng xe đã đi khuất khỏi màn hình để giải phóng RAM
+    ids_to_remove = [tid for tid in active_trackers if tid not in current_frame_ids]
+    for tid in ids_to_remove:
+        del active_trackers[tid]
+
+    cv2.imshow("He Thong Phat Hien Tai Nan - OOP", frame)
 
     if cv2.waitKey(30) & 0xFF == ord('q'):
         break
