@@ -1,0 +1,122 @@
+// Prisma Schema for Automatic Accident Detection System
+// Database: Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// MODELS
+// ==========================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(OPERATOR)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  alerts Alert[]
+
+  @@map("users")
+}
+
+model Camera {
+  id        String       @id @default(uuid())
+  name      String
+  location  String
+  streamUrl String       @map("stream_url")
+  status    CameraStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  accidents Accident[]
+
+  @@map("cameras")
+}
+
+model Accident {
+  id          String         @id @default(uuid())
+  cameraId    String         @map("camera_id")
+  detectedAt  DateTime       @default(now()) @map("detected_at")
+  confidence  Float
+  severity    AccidentSeverity @default(MEDIUM)
+  status      AccidentStatus @default(PENDING)
+  videoClipUrl String?       @map("video_clip_url")
+  thumbnailUrl String?       @map("thumbnail_url")
+  latitude    Float?
+  longitude   Float?
+  description String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  camera Camera @relation(fields: [cameraId], references: [id])
+  alerts Alert[]
+
+  @@map("accidents")
+}
+
+model Alert {
+  id         String      @id @default(uuid())
+  accidentId String      @map("accident_id")
+  userId     String      @map("user_id")
+  type       AlertType   @default(NOTIFICATION)
+  status     AlertStatus @default(UNREAD)
+  message    String?
+  sentAt     DateTime    @default(now()) @map("sent_at")
+  readAt     DateTime?   @map("read_at")
+
+  accident Accident @relation(fields: [accidentId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("alerts")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum CameraStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum AccidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AccidentStatus {
+  PENDING
+  CONFIRMED
+  FALSE_ALARM
+  RESOLVED
+}
+
+enum AlertType {
+  NOTIFICATION
+  EMAIL
+  SMS
+}
+
+enum AlertStatus {
+  UNREAD
+  READ
+  DISMISSED
+}
