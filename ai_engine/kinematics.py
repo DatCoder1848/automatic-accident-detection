@@ -1,3 +1,4 @@
+# Intersection "giao" over "tren" Union "hop"
 def calculate_iou(boxA, boxB):
     # box format: [x_min, y_min, x_max, y_max]
     xA = max(boxA[0], boxB[0])
@@ -26,8 +27,9 @@ from collections import deque
 
 
 class VehicleTrack:
-    def __init__(self, track_id, max_history=5):
+    def __init__(self, track_id, vehicle_type="unknown", max_history=5):
         self.track_id = track_id
+        self.vehicle_type = vehicle_type
         # Hàng đợi lưu tâm xe (cx, cy) của N frames gần nhất
         self.centroids = deque(maxlen=max_history)
         # Hàng đợi lưu vận tốc của N frames gần nhất
