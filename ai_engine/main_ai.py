@@ -6,6 +6,8 @@ from kinematics import calculate_iou, VehicleTrack
 import time
 import math
 import argparse
+import json
+from datetime import datetime, UTC
 
 parser = argparse.ArgumentParser(description = 'AI core detecting accidents ')
 parser.add_argument(
@@ -128,6 +130,21 @@ while cap.isOpened():
 
                             cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 50),
                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+
+                            # TẠO GÓI TIN JSON BÁO CÁO
+                            accident_payload = {
+                                "camera_id": "CAM_HCMC_GOLVAP_01",
+                                "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "accident_detected": True,
+                                "confidence_score": float(round(iou_score, 2)),
+                                "alert_level": "HIGH",
+                                "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
+                                "evidence_image_base64": "",
+                                "video_clip_path": f"/data_storage/video_clips/accident_{frame_count}.mp4"
+                            }
+                            # In ra Terminal để kiểm tra trước khi gửi API
+                            print("\n[SYSTEM] ĐÃ ĐÓNG GÓI JSON THÀNH CÔNG:")
+                            print(json.dumps(accident_payload, indent=2))
                             print(
                                 f"[ALARM] Xác nhận va chạm khu vực tọa độ ({int(crash_cx)}, {int(crash_cy)}) | IoU: {iou_score:.2f} | Frame: {frame_count}")
 
