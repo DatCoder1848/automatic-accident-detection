@@ -1,13 +1,15 @@
+import os
 import cv2
-import math
 from ultralytics import YOLO
 # Nạp công cụ toán học và Class quản lý phương tiện từ file kinematics.py
 from kinematics import calculate_iou, VehicleTrack
-import time
 import math
 import argparse
 import json
 from datetime import datetime, UTC
+import base64
+from video_utils import *
+import threading
 
 parser = argparse.ArgumentParser(description = 'AI core detecting accidents ')
 parser.add_argument(
@@ -19,6 +21,15 @@ parser.add_argument(
 
 # Tien hanh doc tham so nguoi dung nhap vao tu Terminal
 args = parser.parse_args()
+
+# Lấy đường dẫn tuyệt đối của thư mục chứa file code hiện tại
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Kết hợp với thư mục đích (nó sẽ tự tính toán chuẩn xác tương đương với ../)
+output_dir = os.path.abspath(os.path.join(current_dir, '..', 'data_storage', 'video_clips', 'accidents'))
+
+# Tự động tạo thư mục nếu hệ thống chưa có sẵn (tránh lỗi OpenCV không ghi được file)
+os.makedirs(output_dir, exist_ok=True)
 
 
 print("Đang khởi động hệ thống...")
@@ -35,6 +46,10 @@ COOLDOWN_FRAMES = 200   # Đóng băng cảnh báo trong 90 frames (tương đư
 FRAME_SKIP = 2  # Hệ thống chỉ xử lý 1 khung hình sau mỗi 3 khung hình trôi qua
 frame_count = 0        # Bộ đếm thời gian tuyệt đối của video
 
+frame_buffer = deque(maxlen=150)  # Buffer luu lien tuc 150 frame gan nhat
+# Lấy FPS gốc của video nguồn (nếu không lấy được, mặc định là 30)
+CAMERA_FPS = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
@@ -42,14 +57,16 @@ while cap.isOpened():
 
     frame_count += 1  # Đồng hồ thời gian của video bắt đầu tích tắc
 
+    # THÊM DÒNG NÀY: Giảm độ phân giải video để tăng tốc độ xử lý FPS
+    frame = cv2.resize(frame, (1024, 576))
+
+    # Them frame hien tai vao buffer:
+    frame_buffer.append(frame.copy())
+
     # ------------------ KỸ THUẬT FRAME SKIPPING ------------------
     # Nếu số thứ tự frame không chia hết cho 3 -> Bỏ qua, không gọi YOLO
     if frame_count % FRAME_SKIP != 0:
         continue
-
-    # THÊM DÒNG NÀY: Giảm độ phân giải video để tăng tốc độ xử lý FPS
-    frame = cv2.resize(frame, (1024, 576))
-
     # YOLO Tracking
     results = model.track(frame, classes=[2, 3, 5, 7], persist=True, tracker="bytetrack.yaml", verbose=False)
 
@@ -73,7 +90,6 @@ while cap.isOpened():
                 # Trích xuất tên xe (VD: 'car', 'motorcycle') và truyền vào OOP
                 veh_type = class_names[cls_id]
                 active_trackers[track_id] = VehicleTrack(track_id, vehicle_type=veh_type)
-                #active_trackers[track_id] = VehicleTrack(track_id)
 
             # Gọi hàm update() của đối tượng để nó tự động tính toán vận tốc, gia tốc, tọa độ
             current_vehicle = active_trackers[track_id]
@@ -131,6 +147,23 @@ while cap.isOpened():
                             cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 50),
                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
 
+                            # Thuc hien trich xuat frame thanh hinh anh va mã hóa base64:
+                            base64_string = ""
+                            is_success, encoded_img = cv2.imencode('.jpg', frame)
+                            if is_success:
+                                base64_string = base64.b64encode(encoded_img).decode('utf-8')
+                            else:
+                                print('❌ CANH BAO!!! -> Du lieu hinh anh khong the trich xuat!')
+
+                            # Trich xuat doan video tai nan tu Buffer:
+                            buffer_snapshot = list(frame_buffer)
+                            output_path = os.path.join(output_dir, f'accident_{frame_count}.mp4')
+                            video_thread = threading.Thread(
+                                target=generate_video_from_buffer,
+                                args=(buffer_snapshot, output_path, CAMERA_FPS)
+                            )
+                            video_thread.start()
+
                             # TẠO GÓI TIN JSON BÁO CÁO
                             accident_payload = {
                                 "camera_id": "CAM_HCMC_GOLVAP_01",
@@ -139,8 +172,8 @@ while cap.isOpened():
                                 "confidence_score": round(float(iou_score), 2),
                                 "alert_level": "HIGH",
                                 "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
-                                "evidence_image_base64": "",
-                                "video_clip_path": f"/data_storage/video_clips/accident_{frame_count}.mp4"
+                                "evidence_image_base64": "", #base64_string,
+                                "video_clip_path": output_path
                             }
                             # In ra Terminal để kiểm tra trước khi gửi API
                             print("\n[SYSTEM] ĐÃ ĐÓNG GÓI JSON THÀNH CÔNG:")
@@ -152,8 +185,10 @@ while cap.isOpened():
     # Xóa các sự cố đã trôi qua quá 90 frames
     active_incidents = [inc for inc in active_incidents if frame_count - inc['frame'] < COOLDOWN_FRAMES]
 
-    # Xóa các xe đã đi khuất (giữ nguyên code cũ của cậu)
+    # Xóa các xe đã đi khuất
     ids_to_remove = [tid for tid in active_trackers if tid not in current_frame_ids]
+    for tid in ids_to_remove:
+        del active_trackers[tid]
 
     cv2.imshow("He Thong Phat Hien Tai Nan - OOP", frame)
 
