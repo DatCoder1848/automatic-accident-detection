@@ -73,7 +73,7 @@ while cap.isOpened():
                 # Trích xuất tên xe (VD: 'car', 'motorcycle') và truyền vào OOP
                 veh_type = class_names[cls_id]
                 active_trackers[track_id] = VehicleTrack(track_id, vehicle_type=veh_type)
-                active_trackers[track_id] = VehicleTrack(track_id)
+                #active_trackers[track_id] = VehicleTrack(track_id)
 
             # Gọi hàm update() của đối tượng để nó tự động tính toán vận tốc, gia tốc, tọa độ
             current_vehicle = active_trackers[track_id]
@@ -136,7 +136,7 @@ while cap.isOpened():
                                 "camera_id": "CAM_HCMC_GOLVAP_01",
                                 "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                 "accident_detected": True,
-                                "confidence_score": float(round(iou_score, 2)),
+                                "confidence_score": round(float(iou_score), 2),
                                 "alert_level": "HIGH",
                                 "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
                                 "evidence_image_base64": "",
