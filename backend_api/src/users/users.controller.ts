@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { Prisma } from '../../generated/prisma/client.js';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UsersService } from './users.service.js';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -19,12 +18,12 @@ export class UsersController {
   }
 
   @Post()
-  create(@Body() data: Prisma.UserCreateInput) {
+  create(@Body() data: { email: string; password: string; name?: string; role?: string }) {
     return this.usersService.create(data);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() data: Prisma.UserUpdateInput) {
+  update(@Param('id') id: string, @Body() data: { email?: string; name?: string; role?: string }) {
     return this.usersService.update(id, data);
   }
 }

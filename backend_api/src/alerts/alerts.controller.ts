@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
-import { AlertsService } from './alerts.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AlertsService } from './alerts.service.js';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 
 @UseGuards(JwtAuthGuard)
 @Controller('alerts')

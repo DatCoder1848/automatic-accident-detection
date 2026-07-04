@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class AlertsService {
@@ -8,7 +8,7 @@ export class AlertsService {
   async createForAccident(accidentId: string) {
     const users = await this.prisma.user.findMany();
     return this.prisma.alert.createMany({
-      data: users.map((user) => ({
+      data: users.map((user: any) => ({
         accidentId,
         userId: user.id,
         type: 'NOTIFICATION',

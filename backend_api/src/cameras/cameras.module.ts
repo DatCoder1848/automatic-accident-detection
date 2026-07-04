@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { CamerasController } from './cameras.controller';
-import { CamerasService } from './cameras.service';
+import { CamerasController } from './cameras.controller.js';
+import { CamerasService } from './cameras.service.js';
 
 @Module({
   controllers: [CamerasController],
