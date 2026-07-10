@@ -6,7 +6,7 @@ export class CamerasService {
   constructor(private prisma: PrismaService) {}
 
   findAll(status?: string) {
-    return this.prisma.camera.findMany(status ? { where: { status } } : undefined);
+    return this.prisma.camera.findMany(status ? { where: { status: status as any } } : undefined);
   }
 
   findOne(id: string) {
@@ -14,11 +14,11 @@ export class CamerasService {
   }
 
   create(data: { name: string; location: string; streamUrl: string; status?: string }) {
-    return this.prisma.camera.create({ data });
+    return this.prisma.camera.create({ data: data as any });
   }
 
   update(id: string, data: { name?: string; location?: string; streamUrl?: string; status?: string }) {
-    return this.prisma.camera.update({ where: { id }, data });
+    return this.prisma.camera.update({ where: { id }, data: data as any });
   }
 
   remove(id: string) {

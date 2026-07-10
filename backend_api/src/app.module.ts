@@ -7,9 +7,11 @@ import { UsersModule } from './users/users.module.js';
 import { CamerasModule } from './cameras/cameras.module.js';
 import { AccidentsModule } from './accidents/accidents.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
+import { EventsModule } from './events/events.module.js';
+import { UploadModule } from './upload/upload.module.js';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, CamerasModule, AlertsModule, AccidentsModule],
+  imports: [PrismaModule, EventsModule, AuthModule, UsersModule, CamerasModule, AlertsModule, AccidentsModule, UploadModule],
   controllers: [AppController],
   providers: [AppService],
 })

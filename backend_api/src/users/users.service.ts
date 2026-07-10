@@ -14,10 +14,10 @@ export class UsersService {
   }
 
   create(data: { email: string; password: string; name?: string; role?: string }) {
-    return this.prisma.user.create({ data });
+    return this.prisma.user.create({ data: data as any });
   }
 
   update(id: string, data: { email?: string; name?: string; role?: string }) {
-    return this.prisma.user.update({ where: { id }, data });
+    return this.prisma.user.update({ where: { id }, data: data as any });
   }
 }
