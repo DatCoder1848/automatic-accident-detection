@@ -1,0 +1,16 @@
+{
+  "CAM_CRASH_7": {
+    "source": "../data_storage/video_clips/positive/crash_7.mp4",
+    "src_pts": [[403, 199], [852, 209], [770, 554], [77, 397]],
+    "pixel_to_meter": 0.25,
+    "bev_width": 150,
+    "bev_height": 250
+  },
+  "CAM_CRASH_8": {
+    "source": "../data_storage/video_clips/positive/crash_8.mp4",
+    "src_pts": [[200, 150], [800, 150], [900, 550], [100, 550]],
+    "pixel_to_meter": 0.15,
+    "bev_width": 150,
+    "bev_height": 250
+  }
+}
