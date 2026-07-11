@@ -13,6 +13,7 @@ export function useSocket() {
     const socket = io(SOCKET_URL);
     socketRef.current = socket;
 
+    // Thread 1: Instant alert - accident detected (no video yet)
     socket.on('new-accident', (accident: any) => {
       notification.warning({
         message: '🚨 New Accident Detected',
@@ -20,9 +21,21 @@ export function useSocket() {
         placement: 'topRight',
         duration: 8,
       });
-      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['accidents'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    });
+
+    // Thread 2: Video ready - evidence uploaded
+    socket.on('accident-video-ready', (data: { accidentId: string; videoClipUrl: string }) => {
+      notification.success({
+        message: '📹 Video Evidence Ready',
+        description: `Evidence video has been uploaded for accident.`,
+        placement: 'topRight',
+        duration: 5,
+      });
+      // Refresh the specific accident detail if currently viewing
+      queryClient.invalidateQueries({ queryKey: ['accident', data.accidentId] });
+      queryClient.invalidateQueries({ queryKey: ['accidents'] });
     });
 
     socket.on('accident-updated', () => {

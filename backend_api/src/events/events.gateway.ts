@@ -13,4 +13,8 @@ export class EventsGateway {
   emitAccidentUpdated(accident: any) {
     this.server.emit('accident-updated', accident);
   }
+
+  emitVideoReady(data: { accidentId: string; videoClipUrl: string }) {
+    this.server.emit('accident-video-ready', data);
+  }
 }

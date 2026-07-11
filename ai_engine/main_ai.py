@@ -9,7 +9,7 @@ import json
 from datetime import datetime, UTC
 import base64
 from video_utils import *
-from api_client import report_accident, get_camera_id_by_source
+from api_client import report_accident, upload_video, get_camera_id_by_source
 import threading
 
 parser = argparse.ArgumentParser(description = 'AI core detecting accidents ')
@@ -197,17 +197,26 @@ while cap.isOpened():
                             print(
                                 f"[ALARM] Xác nhận va chạm khu vực tọa độ ({int(crash_cx)}, {int(crash_cy)}) | IoU: {iou_score:.2f} | Frame: {frame_count}")
 
-                            # GỬI LÊN BACKEND API
+                            # GỬI LÊN BACKEND API (2-THREAD ASYNC FLOW)
                             if camera_id:
                                 # Map confidence to severity level
                                 severity = "HIGH" if iou_score > 0.3 else "MEDIUM" if iou_score > 0.15 else "LOW"
                                 description = f"Collision detected between {vehicle_A.vehicle_type} and {vehicle_B.vehicle_type} at frame {frame_count}"
 
-                                api_thread = threading.Thread(
-                                    target=report_accident,
-                                    args=(camera_id, round(float(iou_score), 2), severity),
-                                    kwargs={"video_clip_url": output_path, "description": description}
-                                )
+                                # THREAD 1: Gửi cảnh báo tức thì (không chờ video)
+                                def send_alert_then_video():
+                                    accident_id = report_accident(
+                                        camera_id,
+                                        round(float(iou_score), 2),
+                                        severity,
+                                        description=description
+                                    )
+                                    # THREAD 2: Chờ video render xong rồi upload
+                                    if accident_id:
+                                        video_thread.join()  # Đợi video_thread xuất file xong
+                                        upload_video(accident_id, output_path)
+
+                                api_thread = threading.Thread(target=send_alert_then_video)
                                 api_thread.start()
 
     # 3. DỌN DẸP BỘ NHỚ

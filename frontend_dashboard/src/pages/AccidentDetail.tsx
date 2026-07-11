@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, Descriptions, Tag, Button, Space, Select } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Card, Descriptions, Tag, Button, Space, Select, Spin } from 'antd';
+import { ArrowLeftOutlined, LoadingOutlined } from '@ant-design/icons';
 import api from '../api/client';
 
 const severityColors: Record<string, string> = { LOW: 'blue', MEDIUM: 'orange', HIGH: 'red', CRITICAL: 'magenta' };
@@ -14,6 +14,11 @@ export default function AccidentDetail() {
   const { data: accident, isLoading } = useQuery({
     queryKey: ['accident', id],
     queryFn: () => api.get(`/accidents/${id}`).then(r => r.data),
+    refetchInterval: (query) => {
+      // Auto-refetch every 3s while waiting for video
+      const data = query.state.data;
+      return data && !data.videoClipUrl ? 3000 : false;
+    },
   });
 
   const updateStatus = useMutation({
@@ -59,15 +64,21 @@ export default function AccidentDetail() {
           )}
         </Descriptions>
 
-        {accident.videoClipUrl && (
-          <div style={{ marginTop: 24 }}>
-            <h4>Video Evidence</h4>
+        {/* Video Section - 2 phase UI */}
+        <div style={{ marginTop: 24 }}>
+          <h4>Video Evidence</h4>
+          {accident.videoClipUrl ? (
             <video controls width="100%" style={{ maxWidth: 720, borderRadius: 8 }}>
               <source src={accident.videoClipUrl} type="video/mp4" />
               Your browser does not support video playback.
             </video>
-          </div>
-        )}
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 24, background: '#f5f5f5', borderRadius: 8 }}>
+              <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+              <span style={{ color: '#666' }}>Đang trích xuất bằng chứng từ camera...</span>
+            </div>
+          )}
+        </div>
       </Card>
     </>
   );
