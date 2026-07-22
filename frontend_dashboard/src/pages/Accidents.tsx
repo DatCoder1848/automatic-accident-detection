@@ -1,6 +1,7 @@
 import { Table, Select, Tag, Space } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
 const severityColors: Record<string, string> = { LOW: 'blue', MEDIUM: 'orange', HIGH: 'red', CRITICAL: 'magenta' };
@@ -8,6 +9,7 @@ const severityColors: Record<string, string> = { LOW: 'blue', MEDIUM: 'orange', 
 export default function Accidents() {
   const [severity, setSeverity] = useState<string>();
   const [status, setStatus] = useState<string>();
+  const navigate = useNavigate();
 
   const { data: accidents = [], isLoading } = useQuery({
     queryKey: ['accidents', severity, status],
@@ -25,6 +27,7 @@ export default function Accidents() {
     { title: 'Confidence', dataIndex: 'confidence', key: 'confidence', render: (v: number) => `${(v * 100).toFixed(0)}%` },
     { title: 'Severity', dataIndex: 'severity', key: 'severity', render: (s: string) => <Tag color={severityColors[s]}>{s}</Tag> },
     { title: 'Status', dataIndex: 'status', key: 'status', render: (s: string) => <Tag>{s}</Tag> },
+    { title: '', key: 'action', render: (_: any, record: any) => <a onClick={() => navigate(`/accidents/${record.id}`)}>Detail</a> },
   ];
 
   return (
