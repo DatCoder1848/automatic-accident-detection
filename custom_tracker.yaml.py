@@ -1,0 +1,6 @@
+tracker_type: bytetrack  # Loại tracker
+track_high_thresh: 0.25  # Hạ ngưỡng để hộp có độ tin cậy thấp vẫn được track
+track_low_thresh: 0.05   # Ngưỡng thấp nhất để giữ hộp
+new_track_thresh: 0.35   # Ngưỡng khởi tạo một ID mới (tránh tạo ID rác)
+track_buffer: 60         # QUAN TRỌNG: Tăng bộ nhớ đệm lên 60 frames (2 giây). Nếu xe bị che khuất 2 giây, nó vẫn giữ ID cũ khi xuất hiện lại.
+match_thresh: 0.95       # Tăng dung sai cho việc khớp hình học (giúp nối ID dễ hơn khi xe biến dạng nhẹ)

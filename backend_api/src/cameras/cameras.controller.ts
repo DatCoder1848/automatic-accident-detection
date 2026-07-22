@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { CamerasService } from './cameras.service';
-import { CameraStatus } from '../../generated/prisma/client.js';
+import { CameraStatus } from '@prisma/client'; //from '../../generated/prisma/client.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)

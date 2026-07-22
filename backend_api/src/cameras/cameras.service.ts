@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CameraStatus } from '../../generated/prisma/client.js';
+import { CameraStatus } from '@prisma/client'; //from '../../generated/prisma/client.js';
 
 @Injectable()
 export class CamerasService {

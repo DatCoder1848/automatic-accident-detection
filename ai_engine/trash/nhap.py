@@ -7,7 +7,7 @@ import time
 
 print("Đang khởi động hệ thống...")
 model = YOLO("yolov8n.pt")
-video_path = "../data_storage/video_clips/positive/crash_7.mp4"
+video_path = "../../data_storage/video_clips/positive/crash_7.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # Dictionary quản lý các đối tượng xe đang xuất hiện trên màn hình thay cho bien vehicle_histories cũ
