@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { AlertsController } from './alerts.controller';
-import { AlertsService } from './alerts.service';
+import { AlertsController } from './alerts.controller.js';
+import { AlertsService } from './alerts.service.js';
 
 @Module({
   controllers: [AlertsController],

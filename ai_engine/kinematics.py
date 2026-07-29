@@ -88,7 +88,7 @@ class VehicleTrack:
 
         # Tọa độ pixel thô từ camera
         cx = (box[0] + box[2]) / 2.0
-        cy = (box[1] + box[3]) / 2.0
+        cy = box[3] #(box[1] + box[3]) / 2.0
 
         # THÊM DÒNG NÀY: Nạp tọa độ vào mảng gốc
         self.centroids.append((cx, cy))

@@ -3,6 +3,7 @@ import threading
 import queue
 import time
 import requests
+from collections import deque
 
 
 class VideoReader:
@@ -12,6 +13,8 @@ class VideoReader:
         self.connect_camera()  # Gọi hàm kết nối lần đầu
 
         self.frame_queue = queue.Queue(maxsize=queue_size)
+        # Buffer lưu 5 giây video lùi về từ thời điểm hiện tại (5s * 30 fps = 150 frames)
+        self.history_buffer = deque(maxlen=150)
         self.stopped = False
 
     def connect_camera(self):
@@ -55,6 +58,12 @@ class VideoReader:
                 if self.connect_camera():
                     print("[HỆ THỐNG] Đã khôi phục tín hiệu mạng. Tiếp tục giám sát 24/7!")
                 continue  # Bỏ qua các lệnh dưới, quay lại đầu vòng lặp while
+
+            # ÉP KÍCH THƯỚC CHUẨN ĐỂ LƯU VIDEO ĐỒNG NHẤT
+            frame = cv2.resize(frame, (1024, 576))
+
+            # THÊM DÒNG NÀY: Copy 1 bản cất vào túi quá khứ trước khi ném lên băng chuyền AI
+            self.history_buffer.append(frame.copy())
 
             self.frame_queue.put(frame)
 
@@ -128,6 +137,55 @@ class NetworkWorker:
         self.stopped = True
 
 
+class VideoWriterWorker:
+    def __init__(self, fps=30.0, resolution=(1024, 576)):
+        # Băng chuyền số 3: Chứa các gói ảnh chờ ghi thành file
+        self.task_queue = queue.Queue(maxsize=10)
+        self.stopped = False
+        self.fps = fps
+        self.resolution = resolution
+
+    def start(self):
+        print("[HỆ THỐNG] Đang khởi động Luồng Ghi Video (Writer Thread)...")
+        self.thread = threading.Thread(target=self.update, args=())
+        self.thread.daemon = True
+        self.thread.start()
+        return self
+
+    def save_clip(self, frames, filepath):
+        """Hàm cho AI gọi: Quăng túi ảnh qua đây rồi đi làm việc tiếp"""
+        if not self.task_queue.full():
+            self.task_queue.put({'frames': frames, 'filepath': filepath})
+
+    def update(self):
+        """Tiến trình ngầm: Ghi file ra ổ SSD"""
+        while not self.stopped:
+            try:
+                task = self.task_queue.get(timeout=1)
+                frames = task['frames']
+                filepath = task['filepath']
+
+                print(f"[WRITER] Đang xuất file bằng chứng: {filepath}...")
+
+                # Bộ mã hóa mp4
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                out = cv2.VideoWriter(filepath, fourcc, self.fps, self.resolution)
+
+                for f in frames:
+                    out.write(f)
+                out.release()
+
+                print(f"[WRITER] Đã lưu thành công clip: {filepath}")
+
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"[WRITER ERROR] Lỗi ghi video: {e}")
+
+    def stop(self):
+        self.stopped = True
+
+
 # =================================================================== #
 
 # =================================================================== #
@@ -142,10 +200,10 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_CRASH_7"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID = "CAM_CRASH_6"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
-    with open(CONFIG_FILE, "r") as f:
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         all_cameras = json.load(f)
 
     cam_config = all_cameras[CAMERA_ID]
@@ -155,7 +213,7 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLOv8...")
-    model = YOLO("yolov8n.pt")
+    model = YOLO("trash/yolov8n.pt")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
@@ -165,8 +223,11 @@ if __name__ == "__main__":
 
     # Bật Luồng Mạng
     API_URL = "http://localhost:3000/accidents"
-    API_KEY = "ai-secret-key-123"
+    API_KEY = "ai-service-secret-key"
     network_worker = NetworkWorker(API_URL, API_KEY).start()
+
+    # Bật Luồng Ghi Video
+    video_writer_worker = VideoWriterWorker().start()
 
     # 2. KHỞI TẠO CÁC BIẾN TRẠNG THÁI CỦA THUẬT TOÁN ĐỘNG HỌC
     active_trackers = {}
@@ -225,55 +286,73 @@ if __name__ == "__main__":
                     cv2.putText(frame, f"ID:{track_id} v:{speed:.1f}", (x_min, y_min - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-                # 2.2 LOGIC BẮT VA CHẠM (SPATIO-TEMPORAL CLUSTERING)
-                for i in range(len(current_frame_ids)):
-                    for j in range(i + 1, len(current_frame_ids)):
-                        id_A = current_frame_ids[i]
-                        id_B = current_frame_ids[j]
+                    # 2.2 LOGIC BẮT VA CHẠM ĐÃ ĐƯỢC SIẾT CHẶT
+                    for i in range(len(current_frame_ids)):
+                        for j in range(i + 1, len(current_frame_ids)):
+                            id_A = current_frame_ids[i]
+                            id_B = current_frame_ids[j]
 
-                        vehicle_A = active_trackers[id_A]
-                        vehicle_B = active_trackers[id_B]
+                            vehicle_A = active_trackers[id_A]
+                            vehicle_B = active_trackers[id_B]
 
-                        iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
+                            iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
 
-                        if iou_score > 0.1:
-                            a_A = vehicle_A.acceleration
-                            a_B = vehicle_B.acceleration
+                            # LỚP LỌC 1: Tăng ngưỡng va chạm vật lý lên 30% diện tích (Tránh ảo giác 2D)
+                            if iou_score > 0.3:
+                                a_A = vehicle_A.acceleration
+                                a_B = vehicle_B.acceleration
 
-                            if a_A <= -3.0 or a_B <= -3.0:
-                                crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
-                                crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
+                                # Lấy vận tốc hiện tại
+                                v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
+                                v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
 
-                                is_new_incident = True
-                                for incident in active_incidents:
-                                    if frame_count - incident['frame'] < COOLDOWN_FRAMES:
-                                        dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
-                                                    crash_cy - incident['centroid'][1]) ** 2)
-                                        if dist < INCIDENT_RADIUS:
-                                            is_new_incident = False
-                                            break
+                                # LỚP LỌC 2 & 3: Va chạm = Giảm tốc độ mạnh (<= -6 km/h trên mỗi 0.1s)
+                                # VÀ phải dẫn đến dừng xe hoặc bò lết (vận tốc < 5 km/h)
+                                is_crash_A = (a_A <= -6.0) and (v_A < 5.0)
+                                is_crash_B = (a_B <= -6.0) and (v_B < 5.0)
 
-                                if is_new_incident:
-                                    active_incidents.append({'centroid': (crash_cx, crash_cy), 'frame': frame_count})
-                                    cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1,
-                                                (0, 0, 255), 3)
+                                if is_crash_A or is_crash_B:
+                                    crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
+                                    crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
 
-                                    # --- GIAO TIẾP MẠNG ĐA LUỒNG ---
-                                    # Đóng gói JSON (Bỏ hoàn toàn Base64 ảnh nặng nề)
-                                    accident_payload = {
-                                        "camera_id": "CAM_HCMC_GOLVAP_01",
-                                        "frame_count": frame_count,
-                                        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                        "accident_detected": True,
-                                        "confidence_score": round(float(iou_score), 2),
-                                        "alert_level": "HIGH",
-                                        "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
-                                        # Tạm thời cấu hình đường dẫn vật lý, khâu cắt video sẽ bổ sung sau
-                                        "video_clip_path": f"../data_storage/video_clips/accidents/accident_{frame_count}_v2.mp4"
-                                    }
+                                    is_new_incident = True
+                                    for incident in active_incidents:
+                                        if frame_count - incident['frame'] < COOLDOWN_FRAMES:
+                                            dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
+                                                        crash_cy - incident['centroid'][1]) ** 2)
+                                            if dist < INCIDENT_RADIUS:
+                                                is_new_incident = False
+                                                break
 
-                                    # Ném gói tin lên băng chuyền để Luồng Mạng tự xử lý, AI tiếp tục chạy không chờ đợi!
-                                    network_worker.send_alert(accident_payload)
+                                    if is_new_incident:
+                                        active_incidents.append({'centroid': (crash_cx, crash_cy), 'frame': frame_count})
+                                        cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                                                    (0, 0, 255), 3)
+
+                                        # 1. TRÍCH XUẤT QUÁ KHỨ
+                                        # Rút toàn bộ ảnh đang có trong túi ra thành 1 mảng (Khoảng 5 giây)
+                                        clip_frames = list(reader.history_buffer)
+                                        clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
+
+                                        # 2. GIAO VIỆC CHO LUỒNG WRITER XỬ LÝ ÂM THẦM
+                                        video_writer_worker.save_clip(clip_frames, clip_path)
+
+                                        # --- GIAO TIẾP MẠNG ĐA LUỒNG ---
+                                        # Đóng gói JSON (Bỏ hoàn toàn Base64 ảnh nặng nề)
+                                        accident_payload = {
+                                            "camera_id": CAMERA_ID,
+                                            "frame_count": frame_count,
+                                            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                            "accident_detected": True,
+                                            "confidence_score": round(float(iou_score), 2),
+                                            "alert_level": "HIGH",
+                                            "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
+                                            # Tạm thời cấu hình đường dẫn vật lý, khâu cắt video sẽ bổ sung sau
+                                            "video_clip_path": f"../data_storage/video_clips/accidents/accident_{frame_count}_v2.mp4"
+                                        }
+
+                                        # Ném gói tin lên băng chuyền để Luồng Mạng tự xử lý, AI tiếp tục chạy không chờ đợi!
+                                        network_worker.send_alert(accident_payload)
 
             # 3. DỌN DẸP BỘ NHỚ AI
             active_incidents = [inc for inc in active_incidents if frame_count - inc['frame'] < COOLDOWN_FRAMES]
@@ -292,8 +371,25 @@ if __name__ == "__main__":
 
             cv2.imshow("He Thong Loi AI - Thuc Chien", frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            # 4. ĐO LƯỜNG VÀ HIỂN THỊ
+            elapsed_time = time.time() - start_time
+            fps = frame_count / elapsed_time if elapsed_time > 0 else 0
+
+            # Vẽ thanh trạng thái
+            cv2.rectangle(frame, (0, 0), (frame.shape[1], 40), (0, 0, 0), -1)
+            cv2.putText(frame, f"AI FPS: {fps:.1f} | Frame: {frame_count}", (15, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+            cv2.imshow("He Thong Loi AI - Thuc Chien", frame)
+
+            # --- CƠ CHẾ GỠ LỖI (DEBUG MODE) ---
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord('q'):  # Bấm 'q' để thoát an toàn
                 break
+            elif key == ord('p'):  # Bấm 'p' (Pause) để đóng băng thời gian
+                print("[DEBUG] Hệ thống tạm dừng. Bấm phím bất kỳ trên bàn phím để chạy tiếp...")
+                cv2.waitKey(0)  # Số 0 nghĩa là: Đứng hình vĩnh viễn cho đến khi người dùng gõ phím
 
     except KeyboardInterrupt:
         print("[HỆ THỐNG] Người dùng cưỡng chế dừng chương trình.")
@@ -301,5 +397,6 @@ if __name__ == "__main__":
         # Tắt toàn bộ hệ thống an toàn
         reader.stop()
         network_worker.stop()
+        video_writer_worker.stop()
         cv2.destroyAllWindows()
         print("[HỆ THỐNG] Đã tắt luồng an toàn.")

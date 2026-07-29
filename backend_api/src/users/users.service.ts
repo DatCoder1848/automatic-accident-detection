@@ -14,11 +14,11 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.UserCreateInput) {
-    return this.prisma.user.create({ data });
+  create(data: { email: string; password: string; name?: string; role?: string }) {
+    return this.prisma.user.create({ data: data as any });
   }
 
-  update(id: string, data: Prisma.UserUpdateInput) {
-    return this.prisma.user.update({ where: { id }, data });
+  update(id: string, data: { email?: string; name?: string; role?: string }) {
+    return this.prisma.user.update({ where: { id }, data: data as any });
   }
 }

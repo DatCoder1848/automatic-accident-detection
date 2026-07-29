@@ -1,12 +1,14 @@
 import { Card, Col, Row, Table, Statistic } from 'antd';
 import { WarningOutlined, VideoCameraOutlined, BellOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
 export default function Dashboard() {
-  const { data: accidents = [] } = useQuery({ queryKey: ['accidents'], queryFn: () => api.get('/accidents').then(r => r.data) });
+  const navigate = useNavigate();
+  const { data: accidents = [] } = useQuery({ queryKey: ['accidents'], queryFn: () => api.get('/accidents').then(r => r.data), refetchInterval: 30000 });
   const { data: cameras = [] } = useQuery({ queryKey: ['cameras'], queryFn: () => api.get('/cameras').then(r => r.data) });
-  const { data: alerts = [] } = useQuery({ queryKey: ['alerts'], queryFn: () => api.get('/alerts').then(r => r.data) });
+  const { data: alerts = [] } = useQuery({ queryKey: ['alerts'], queryFn: () => api.get('/alerts').then(r => r.data), refetchInterval: 30000 });
 
   const today = new Date().toDateString();
   const todayAccidents = accidents.filter((a: any) => new Date(a.detectedAt).toDateString() === today);
@@ -18,6 +20,7 @@ export default function Dashboard() {
     { title: 'Camera', dataIndex: ['camera', 'name'], key: 'camera' },
     { title: 'Severity', dataIndex: 'severity', key: 'severity' },
     { title: 'Status', dataIndex: 'status', key: 'status' },
+    { title: '', key: 'action', render: (_: any, record: any) => <a onClick={() => navigate(`/accidents/${record.id}`)}>View</a> },
   ];
 
   return (

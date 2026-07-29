@@ -9,6 +9,7 @@ import json
 from datetime import datetime, UTC
 import base64
 from video_utils import *
+from api_client import report_accident, upload_video, get_camera_id_by_source
 import threading
 
 parser = argparse.ArgumentParser(description = 'AI core detecting accidents ')
@@ -18,9 +19,24 @@ parser.add_argument(
     required = True,
     help = 'path to video file'
 )
+parser.add_argument(
+    "--camera-id",
+    type = str,
+    default = None,
+    help = 'camera UUID from backend (auto-resolves if not provided)'
+)
 
 # Tien hanh doc tham so nguoi dung nhap vao tu Terminal
 args = parser.parse_args()
+
+# Resolve camera ID
+camera_id = args.camera_id
+if not camera_id:
+    camera_id = get_camera_id_by_source(args.source)
+    if camera_id:
+        print(f"[INIT] Resolved camera ID: {camera_id}")
+    else:
+        print("[INIT] ⚠️ Could not resolve camera ID. Accidents will not be reported to backend.")
 
 # Lấy đường dẫn tuyệt đối của thư mục chứa file code hiện tại
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -164,9 +180,9 @@ while cap.isOpened():
                             )
                             video_thread.start()
 
-                            # TẠO GÓI TIN JSON BÁO CÁO
+                            # TẠO GÓI TIN JSON BÁO CÁO VÀ GỬI LÊN BACKEND
                             accident_payload = {
-                                "camera_id": "CAM_HCMC_GOLVAP_01",
+                                "camera_id": camera_id,
                                 "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                 "accident_detected": True,
                                 "confidence_score": round(float(iou_score), 2),
@@ -180,6 +196,28 @@ while cap.isOpened():
                             print(json.dumps(accident_payload, indent=2))
                             print(
                                 f"[ALARM] Xác nhận va chạm khu vực tọa độ ({int(crash_cx)}, {int(crash_cy)}) | IoU: {iou_score:.2f} | Frame: {frame_count}")
+
+                            # GỬI LÊN BACKEND API (2-THREAD ASYNC FLOW)
+                            if camera_id:
+                                # Map confidence to severity level
+                                severity = "HIGH" if iou_score > 0.3 else "MEDIUM" if iou_score > 0.15 else "LOW"
+                                description = f"Collision detected between {vehicle_A.vehicle_type} and {vehicle_B.vehicle_type} at frame {frame_count}"
+
+                                # THREAD 1: Gửi cảnh báo tức thì (không chờ video)
+                                def send_alert_then_video():
+                                    accident_id = report_accident(
+                                        camera_id,
+                                        round(float(iou_score), 2),
+                                        severity,
+                                        description=description
+                                    )
+                                    # THREAD 2: Chờ video render xong rồi upload
+                                    if accident_id:
+                                        video_thread.join()  # Đợi video_thread xuất file xong
+                                        upload_video(accident_id, output_path)
+
+                                api_thread = threading.Thread(target=send_alert_then_video)
+                                api_thread.start()
 
     # 3. DỌN DẸP BỘ NHỚ
     # Xóa các sự cố đã trôi qua quá 90 frames
