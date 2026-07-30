@@ -19,10 +19,10 @@ def click_event(event, x, y, flags, params):
 
 if __name__ == "__main__":
     # Đường dẫn file video cậu đang test
-    video_path = "../data_storage/video_clips/negative/normal_2.mp4" # positive/crash_10.mp4" #
+    video_path = "../data_storage/video_clips/negative/normal_12.mp4" # positive/crash_16.mp4" #
     cap = cv2.VideoCapture(video_path)
 
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 50)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 300)
     # Lấy thử khung hình đầu tiên
     success, frame = cap.read()
     if not success:

@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_CRASH_1"  # "CAM_NOR_2" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID = "CAM_NOR_6" # "CAM_CRASH_11"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -377,9 +377,25 @@ if __name__ == "__main__":
                                         print(
                                             f"\033[1;31m🚨 [CRASH DETECTED] PHÁT HIỆN TAI NẠN TẠI FRAME {frame_count}! 🚨\033[0m")
                                         print(f"📍 Vị trí tâm va chạm: ({crash_cx:.1f}, {crash_cy:.1f})")
+                                        # Bổ sung 1: Tọa độ tâm cụ thể của từng ID phương tiện
+                                        print("🚗 Đối tượng va chạm:")
                                         print(
-                                            f"🚗 Đối tượng va chạm: {vehicle_A.vehicle_type} (ID:{id_A}) 💥 {vehicle_B.vehicle_type} (ID:{id_B})")
+                                            f"   - {vehicle_A.vehicle_type} (ID:{id_A}) | Tọa độ: ({vehicle_A.centroids[-1][0]:.1f}, {vehicle_A.centroids[-1][1]:.1f})")
+                                        print(
+                                            f"   - {vehicle_B.vehicle_type} (ID:{id_B}) | Tọa độ: ({vehicle_B.centroids[-1][0]:.1f}, {vehicle_B.centroids[-1][1]:.1f})")
+
+                                        # Bổ sung 2: Nguyên nhân (Các điều kiện động học đã thỏa mãn)
+                                        reasons = ["Khoảng cách thực tế < 2.0m"]
+                                        if kinematic_crash_A:
+                                            reasons.append(f"Xe ID:{id_A} phanh gấp (a={a_A:.1f}, v={v_A:.1f})")
+                                        if kinematic_crash_B:
+                                            reasons.append(f"Xe ID:{id_B} phanh gấp (a={a_B:.1f}, v={v_B:.1f})")
+                                        if is_mutual_ghosting:
+                                            reasons.append("Cả 2 xe mất dấu ID (Bốc hơi kép)")
+
+                                        print(f"🔍 Nguyên nhân quyết định: {' + '.join(reasons)}")
                                         print("=" * 60 + "\n")
+                                        print(f"")
 
                                         # (GIỮ NGUYÊN PHẦN CODE GỌI WRITER VÀ NETWORK BÊN DƯỚI...)
                                         clip_frames = list(reader.history_buffer)

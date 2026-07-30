@@ -1,20 +1,21 @@
 import os
 from moviepy import VideoFileClip
 
+num = 3
 
 # 1. Đường dẫn file gốc của cậu
-input_video = "C:/Users/TAN DAT/Videos/Captures/normal_5.mp4"
+input_video = f"E:/Downloads/Phuc_nor_{num}.mp4" # "D:/Viec_hoc/Hoc_ki_2_nam_3/CD_HTTM/project/AAD/automatic-accident-detection/data_storage/video_clips/positive/crash_6.mp4" #
 output_dir = "../../data_storage/video_clips/negative/" # positive/" #
 os.makedirs(output_dir, exist_ok=True)
 
 # 2. Mảng 8 mốc thời gian cậu đã xác định
 segments = [
-    (0, 24)
+    (0, 10)
 ]
 
 print("BẮT ĐẦU TIẾN TRÌNH CẮT VIDEO...")
 for i, (start_time, end_time) in enumerate(segments):
-    output_filename = os.path.join(output_dir, f"crash_{i + 2}.mp4")
+    output_filename = os.path.join(output_dir, f"normal_{i + 5 + num}.mp4")
     print(f"Đang xử lý Clip {i + 1} (Từ {start_time}s -> {end_time}s)...")
 
     try:
