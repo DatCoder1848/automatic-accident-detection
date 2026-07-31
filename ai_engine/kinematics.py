@@ -115,7 +115,13 @@ class VehicleTrack:
             if speed_kmh > 150.0 and len(self.velocities) > 0:
                 speed_kmh = self.velocities[-1]
 
-            self.velocities.append(speed_kmh)
+            # +++++++++++++++ VÁ LỖI 1: BỘ LỌC LÀM MƯỢT EMA (Alpha = 0.7) +++++++++++++++
+            if len(self.velocities) > 0:
+                ema_speed = 0.7 * speed_kmh + 0.3 * self.velocities[-1]
+                self.velocities.append(ema_speed)
+            else:
+                self.velocities.append(speed_kmh)
+            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         # 3. TÍNH GIA TỐC $a = \Delta v$
         if len(self.velocities) >= 2:
