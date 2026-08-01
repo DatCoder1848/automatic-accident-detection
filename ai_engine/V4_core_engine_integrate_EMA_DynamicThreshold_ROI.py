@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_NOR_6" # "CAM_CRASH_3" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID = "CAM_CRASH_6" # "CAM_NOR_6" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -234,8 +234,10 @@ if __name__ == "__main__":
     # 2. KHỞI TẠO CÁC BIẾN TRẠNG THÁI CỦA THUẬT TOÁN ĐỘNG HỌC
     active_trackers = {}
     active_incidents = []
+    pending_incidents = []  # Hàng đợi chứa các Vùng nghi ngờ
     INCIDENT_RADIUS = 200
     COOLDOWN_FRAMES = 200
+    VALIDATION_FRAMES = 90  # Thời gian kiểm chứng 3 giây (30fps * 3s)
 
     # Các biến bổ sung phục vụ hiển thị UI cảnh báo giữ trong 5 giây
     last_incident_time = 0.0
@@ -293,7 +295,21 @@ if __name__ == "__main__":
                     cv2.putText(frame, f"ID:{track_id} v:{speed:.1f}", (x_min, y_min - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-                    # 2.2 LOGIC BẮT VA CHẠM ĐÃ ĐƯỢC SIẾT CHẶT VÀ BỔ SUNG LOG DEBUG
+
+                        # -------------------------------------------------------------------------
+
+                # ================= ĐÃ LÙI LỀ RA NGOÀI VÒNG LẶP =================
+                    # ================= BẮT ĐẦU KHỐI LOGIC LÕI =================
+                    # HÀM BỔ TRỢ TÍNH GIA TỐC MƯỢT (CHỐNG JITTER)
+                    def get_smooth_accel(vehicle, frames_back=3, fps=30.0):
+                        vels = list(vehicle.velocities)
+                        if len(vels) < frames_back + 1:
+                            return vehicle.acceleration
+                        v_now = vels[-1]
+                        v_past = vels[-(frames_back + 1)]
+                        return (v_now - v_past) / (frames_back / fps)
+
+                    # 2.2 LOGIC BẮT VA CHẠM (GIAI ĐOẠN 1: KÍCH HOẠT VÙNG NGHI NGỜ)
                     all_active_ids = list(active_trackers.keys())
                     for i in range(len(all_active_ids)):
                         for j in range(i + 1, len(all_active_ids)):
@@ -306,130 +322,257 @@ if __name__ == "__main__":
                             if vehicle_A.current_box is None or vehicle_B.current_box is None:
                                 continue
 
-                            # +++++++++++++++ VÁ LỖI 3: VÙNG ẢO ẢNH (HARD ROI) +++++++++++++++
                             cy_A = vehicle_A.centroids[-1][1]
                             cy_B = vehicle_B.centroids[-1][1]
-                            # Bỏ qua không tính toán nếu 1 trong 2 xe ở quá xa (y < 200, sát đường chân trời)
-                            if cy_A < 200 or cy_B < 200:
+                            if cy_A < cam_config.get("horizon_y", 200) or cy_B < cam_config.get("horizon_y", 200):
                                 continue
-                            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-                            # 1. Tính độ giao nhau trên ảnh 2D
                             iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
 
                             if iou_score > 0.02:
-                                # 2. RÚT TỌA ĐỘ BẺ CONG BEV ĐỂ TÍNH KHOẢNG CÁCH THỰC TẾ
+                                # Tính khoảng cách Mét thực tế
                                 bev_A = vehicle_A.centroids_bev[-1]
                                 bev_B = vehicle_B.centroids_bev[-1]
-
-                                # Tính khoảng cách bằng pixel trên ảnh BEV
                                 pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
-
-                                # Đổi ra khoảng cách bằng MÉT ngoài đời thực
                                 real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
 
-                                a_A = vehicle_A.acceleration
-                                a_B = vehicle_B.acceleration
+                                # Tính toán toàn bộ thông số Động học & Không gian trước khi lọc
+                                smooth_a_A = get_smooth_accel(vehicle_A)
+                                smooth_a_B = get_smooth_accel(vehicle_B)
+
                                 v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
                                 v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
+                                max_v_A = max(list(vehicle_A.velocities)[-5:]) if len(
+                                    vehicle_A.velocities) > 0 else 0.0
+                                max_v_B = max(list(vehicle_B.velocities)[-5:]) if len(
+                                    vehicle_B.velocities) > 0 else 0.0
+                                delta_v_A = max_v_A - v_A
+                                delta_v_B = max_v_B - v_B
+                                age_A = len(vehicle_A.centroids)
+                                age_B = len(vehicle_B.centroids)
 
-                                # +++++++++++++++ VÁ LỖI 2: NGƯỠNG GIA TỐC ĐỘNG +++++++++++++++
-                                avg_cy = (cy_A + cy_B) / 2.0
-                                # Xe ở gần (y > 400): Dễ nhìn, ngưỡng cơ sở là -6.0
-                                # Xe ở xa (y <= 400): Dễ nhiễu pixel, siết ngưỡng khắt khe hơn thành -9.0
-                                dynamic_thresh = cam_config["thresh_near"] if avg_cy > cam_config["y_split"] else cam_config["thresh_far"]
-                                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                                # ================= LOG CHI TIẾT ĐỂ BẮT LỖI TẬN GỐC =================
+                                # In log khi hai xe ở gần (< 5m) và có động học bất thường (phanh/văng) hoặc đè nhau
+                                if real_dist_meters < 5.0 and (
+                                        smooth_a_A < -3.0 or smooth_a_B < -3.0 or iou_score > 0.15):
+                                    box_A_str = f"[{int(vehicle_A.current_box[0])},{int(vehicle_A.current_box[1])},{int(vehicle_A.current_box[2])},{int(vehicle_A.current_box[3])}]"
+                                    box_B_str = f"[{int(vehicle_B.current_box[0])},{int(vehicle_B.current_box[1])},{int(vehicle_B.current_box[2])},{int(vehicle_B.current_box[3])}]"
 
-                                # --- HỆ THỐNG LOG DEBUG CHUYÊN SÂU ---
-                                # Chỉ in log khi 2 xe ở gần nhau dưới 5 mét VÀ 1 trong 2 xe có dấu hiệu phanh (gia tốc âm)
-                                if real_dist_meters < 5.0 and (a_A < -1.0 or a_B < -1.0):
                                     print(
-                                        f"\n[DEBUG-AI] Frame {frame_count} | Đối tượng: {vehicle_A.vehicle_type}(ID:{id_A}) & {vehicle_B.vehicle_type}(ID:{id_B})")
+                                        f"\n[DEBUG-AI] Frame {frame_count} | {vehicle_A.vehicle_type}(ID:{id_A}) & {vehicle_B.vehicle_type}(ID:{id_B})")
                                     print(
-                                        f"  -> IoU 2D: {iou_score:.2f} | Khoảng cách thực tế: {real_dist_meters:.1f} mét")
-                                    print(f"  -> Động học ID {id_A}: Vận tốc={v_A:.1f} km/h | Gia tốc={a_A:.1f}")
-                                    print(f"  -> Động học ID {id_B}: Vận tốc={v_B:.1f} km/h | Gia tốc={a_B:.1f}")
+                                        f"  -> Không gian: IoU 2D = {iou_score:.2f} | Khoảng cách thực = {real_dist_meters:.1f}m")
+                                    print(f"  -> ID {id_A} (Tuổi: {age_A}f): Box = {box_A_str}")
+                                    print(
+                                        f"     Động học: v={v_A:.1f} | max_v={max_v_A:.1f} | dV={delta_v_A:.1f} | a_mượt={smooth_a_A:.1f}")
+                                    print(f"  -> ID {id_B} (Tuổi: {age_B}f): Box = {box_B_str}")
+                                    print(
+                                        f"     Động học: v={v_B:.1f} | max_v={max_v_B:.1f} | dV={delta_v_B:.1f} | a_mượt={smooth_a_B:.1f}")
+                                # ===================================================================
 
-                                # 3. LỚP LỌC KÉP KHẰC NGHIỆT
-                                # Điều kiện 1: Thực sự chạm nhau ngoài đời (cách nhau dưới 2 mét)
-                                is_close_enough = real_dist_meters < 2.5
-                                # ++++++++++++++++++++++++++++++++++++++++++++ Cập nhật Begin ++++++++++++++++++++++++++++++++++++++++++++ #
-                                # Kiểm tra xem xe có đang là "Bóng ma" (mất dấu khỏi màn hình) không
+                                # 1. KIỂM TRA BÓNG MA (GHOST DUPLICATION)
                                 is_ghost_A = hasattr(vehicle_A, 'lost_frames') and vehicle_A.lost_frames > 0
                                 is_ghost_B = hasattr(vehicle_B, 'lost_frames') and vehicle_B.lost_frames > 0
+                                if (is_ghost_A or is_ghost_B) and iou_score > 0.4:
+                                    continue
 
-                                # Điều kiện 1: Phanh gấp (Theo ngưỡng phi tuyến)
-                                kinematic_crash_A = (a_A <= dynamic_thresh) #and (v_A < 5.0)
-                                kinematic_crash_B = (a_B <= dynamic_thresh) #and (v_B < 5.0)
-                                has_kinematic_crash = kinematic_crash_A or kinematic_crash_B
+                                # 2. TIÊU CHÍ KÍCH HOẠT (TRIGGER CONDITIONS)
+                                # Cần 1 trong 2 điều kiện: Hoặc đè bẹp lên nhau (Crush), hoặc phanh sốc (Shock)
+                                is_physical_crush = (iou_score > 0.2) and (real_dist_meters < 1.5)
+                                is_kinematic_shock = (real_dist_meters < 2.5) and (
+                                            smooth_a_A < -6.0 or smooth_a_B < -6.0)
 
-                                # Điều kiện 2: Bốc hơi kép CÓ ĐIỀU KIỆN (Lọc chéo)
-                                is_mutual_ghosting = is_ghost_A and is_ghost_B
-                                is_mutual_ghosting_valid = is_mutual_ghosting and (a_A < -2.0 or a_B < -2.0)
-
-                                # Quyết định cuối cùng
-                                if is_close_enough and (has_kinematic_crash or is_mutual_ghosting_valid):
+                                if is_physical_crush or is_kinematic_shock:
                                     crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
                                     crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
-                                    # ++++++++++++++++++++++++++++++++++++++++++++ Cập nhật End ++++++++++++++++++++++++++++++++++++++++++++ #
-                                    is_new_incident = True
+                                    bev_cx = (bev_A[0] + bev_B[0]) / 2.0
+                                    bev_cy = (bev_A[1] + bev_B[1]) / 2.0
+
+                                    is_new_suspect = True
                                     for incident in active_incidents:
                                         if frame_count - incident['frame'] < COOLDOWN_FRAMES:
                                             dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
                                                     crash_cy - incident['centroid'][1]) ** 2)
-                                            if dist < INCIDENT_RADIUS:
-                                                is_new_incident = False
+                                            if dist < 100:
+                                                is_new_suspect = False;
                                                 break
 
-                                    if is_new_incident:
-                                        active_incidents.append(
-                                            {'centroid': (crash_cx, crash_cy), 'frame': frame_count})
+                                    for pending in pending_incidents:
+                                        dist = math.sqrt((crash_cx - pending['centroid'][0]) ** 2 + (
+                                                crash_cy - pending['centroid'][1]) ** 2)
+                                        if dist < 100:
+                                            is_new_suspect = False;
+                                            break
 
-                                        # Cập nhật mốc thời gian phát hiện tai nạn mới nhất để hiển thị UI
-                                        last_incident_time = time.time()
+                                    if is_new_suspect:
+                                        reasons_cache = [f"Khoảng cách: {real_dist_meters:.1f}m"]
+                                        if is_physical_crush: reasons_cache.append(
+                                            f"Giao nhau (IoU: {iou_score:.2f})")
+                                        if is_kinematic_shock: reasons_cache.append(
+                                            f"Phanh/Văng (aA:{smooth_a_A:.1f}, aB:{smooth_a_B:.1f})")
 
-                                        # Highlight log cảnh báo ĐỎ RỰC trên terminal
-                                        print("\n" + "=" * 60)
                                         print(
-                                            f"\033[1;31m🚨 [CRASH DETECTED] PHÁT HIỆN TAI NẠN TẠI FRAME {frame_count}! 🚨\033[0m")
-                                        print(f"📍 Vị trí tâm va chạm: ({crash_cx:.1f}, {crash_cy:.1f})")
-                                        # Bổ sung 1: Tọa độ tâm cụ thể của từng ID phương tiện
-                                        print("🚗 Đối tượng va chạm:")
-                                        print(
-                                            f"   - {vehicle_A.vehicle_type} (ID:{id_A}) | Tọa độ: ({vehicle_A.centroids[-1][0]:.1f}, {vehicle_A.centroids[-1][1]:.1f})")
-                                        print(
-                                            f"   - {vehicle_B.vehicle_type} (ID:{id_B}) | Tọa độ: ({vehicle_B.centroids[-1][0]:.1f}, {vehicle_B.centroids[-1][1]:.1f})")
+                                            f"\033[93m[⚠️ SUSPECT] Đưa vào diện tình nghi tại Frame {frame_count}. Chờ 3s kiểm chứng...\033[0m")
+                                        pending_incidents.append({
+                                            'centroid': (crash_cx, crash_cy),
+                                            'bev_centroid': (bev_cx, bev_cy),
+                                            'start_frame': frame_count,
+                                            'vehicle_types': [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
+                                            'ids': [id_A, id_B],
+                                            'reasons': reasons_cache
+                                        })
 
-                                        # Bổ sung 2: Nguyên nhân (Các điều kiện động học đã thỏa mãn)
-                                        reasons = ["Khoảng cách thực tế < 2.0m"]
-                                        if kinematic_crash_A:
-                                            reasons.append(f"Xe ID:{id_A} phanh gấp (a={a_A:.1f}, v={v_A:.1f})")
-                                        if kinematic_crash_B:
-                                            reasons.append(f"Xe ID:{id_B} phanh gấp (a={a_B:.1f}, v={v_B:.1f})")
-                                        if is_mutual_ghosting:
-                                            reasons.append("Cả 2 xe mất dấu ID (Bốc hơi kép)")
+                    # --- GIAI ĐOẠN 2: KIỂM CHỨNG THEO ĐỐI TƯỢNG VÀ KHÔNG GIAN THỰC (METERS) ---
+                    VALIDATION_RADIUS_METERS = 6.0  # Quét phạm vi 6 mét để bắt gọn xe trượt văng
 
-                                        print(f"🔍 Nguyên nhân quyết định: {' + '.join(reasons)}")
-                                        print("=" * 60 + "\n")
-                                        print(f"")
+                    surviving_pending = []
+                    for pending in pending_incidents:
+                        age_frames = frame_count - pending['start_frame']
 
-                                        # (GIỮ NGUYÊN PHẦN CODE GỌI WRITER VÀ NETWORK BÊN DƯỚI...)
-                                        clip_frames = list(reader.history_buffer)
-                                        clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
-                                        video_writer_worker.save_clip(clip_frames, clip_path)
+                        if age_frames < VALIDATION_FRAMES:
+                            surviving_pending.append(pending)
+                            continue
 
-                                        accident_payload = {
-                                            "camera_id": CAMERA_ID,
-                                            "frame_count": frame_count,
-                                            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                            "accident_detected": True,
-                                            "confidence_score": round(float(iou_score), 2),
-                                            "alert_level": "HIGH",
-                                            "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
-                                            "video_clip_path": f"../data_storage/video_clips/accidents/accident_{frame_count}_v2.mp4"
-                                        }
+                        bev_orig_x, bev_orig_y = pending['bev_centroid']
+                        stuck_vehicles = 0
+                        evidence_logs = []
 
-                                        network_worker.send_alert(accident_payload)
+                        for track_id, vehicle in active_trackers.items():
+                            if hasattr(vehicle, 'lost_frames') and vehicle.lost_frames > 0:
+                                continue
+
+                            v_current = vehicle.velocities[-1] if len(vehicle.velocities) > 0 else 0.0
+                            if v_current > 2.0:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
+                                continue
+
+                            # Đổi khoảng cách trên ảnh sang khoảng cách Mét thực tế
+                            curr_bev_x, curr_bev_y = vehicle.centroids_bev[-1]
+                            dist_px = math.sqrt((curr_bev_x - bev_orig_x) ** 2 + (curr_bev_y - bev_orig_y) ** 2)
+                            real_dist_meters = dist_px * cam_config["pixel_to_meter"]
+
+                            if real_dist_meters < VALIDATION_RADIUS_METERS:
+                                track_age = len(vehicle.centroids)
+                                is_original_victim = track_id in pending['ids']
+                                is_new_object = track_age < VALIDATION_FRAMES  # Xe/Người bị văng, Tracker cấp ID mới
+
+                                # Chỉ chốt tai nạn nếu vật thể nằm lại đường ĐÚNG LÀ phương tiện liên quan
+                                if is_original_victim or is_new_object:
+                                    stuck_vehicles += 1
+                                    evidence_logs.append(
+                                        f"ID:{track_id}({vehicle.vehicle_type}) bất động cách {real_dist_meters:.1f}m")
+
+                        if stuck_vehicles >= 1:
+                            cx, cy = pending['centroid']
+                            active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
+                            last_incident_time = time.time()
+
+                            print("\n" + "=" * 60)
+                            print(
+                                f"\033[1;31m🚨 [CRASH CONFIRMED] XÁC NHẬN TAI NẠN (TỪ NGHI NGỜ FRAME {pending['start_frame']})! 🚨\033[0m")
+                            print(
+                                f"📍 Đối tượng ban đầu: {pending['vehicle_types'][0]}(ID:{pending['ids'][0]}) & {pending['vehicle_types'][1]}(ID:{pending['ids'][1]})")
+                            print(f"🔍 Bằng chứng khởi phát: {' + '.join(pending['reasons'])}")
+                            print(f"🔍 Bằng chứng hiện trường: {stuck_vehicles} nạn nhân.")
+                            for log_msg in evidence_logs:
+                                print(f"   -> {log_msg}")
+                            print("=" * 60 + "\n")
+
+                            clip_frames = list(reader.history_buffer)
+                            clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
+                            video_writer_worker.save_clip(clip_frames, clip_path)
+
+                            accident_payload = {
+                                "camera_id": CAMERA_ID,
+                                "frame_count": frame_count,
+                                "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "accident_detected": True,
+                                "confidence_score": 0.85,
+                                "alert_level": "HIGH",
+                                "vehicles_involved": pending['vehicle_types'],
+                                "video_clip_path": clip_path
+                            }
+                            network_worker.send_alert(accident_payload)
+                        else:
+                            print(
+                                f"\033[92m[✅ FALSE ALARM] Hủy nghi ngờ Frame {pending['start_frame']}. Hiện trường đã giải tỏa.\033[0m")
+
+                    pending_incidents = surviving_pending
+
+                    # --- GIAI ĐOẠN 2: KIỂM CHỨNG THEO ĐỐI TƯỢNG VÀ KHÔNG GIAN THỰC (METERS) ---
+                    VALIDATION_RADIUS_METERS = 6.0  # Quét phạm vi 6 mét để bắt gọn xe trượt văng
+
+                    surviving_pending = []
+                    for pending in pending_incidents:
+                        age_frames = frame_count - pending['start_frame']
+
+                        if age_frames < VALIDATION_FRAMES:
+                            surviving_pending.append(pending)
+                            continue
+
+                        bev_orig_x, bev_orig_y = pending['bev_centroid']
+                        stuck_vehicles = 0
+                        evidence_logs = []
+
+                        for track_id, vehicle in active_trackers.items():
+                            if hasattr(vehicle, 'lost_frames') and vehicle.lost_frames > 0:
+                                continue
+
+                            v_current = vehicle.velocities[-1] if len(vehicle.velocities) > 0 else 0.0
+                            if v_current > 2.0:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
+                                continue
+
+                            # Đổi khoảng cách trên ảnh sang khoảng cách Mét thực tế để phá vỡ ảo giác Camera
+                            curr_bev_x, curr_bev_y = vehicle.centroids_bev[-1]
+                            dist_px = math.sqrt((curr_bev_x - bev_orig_x) ** 2 + (curr_bev_y - bev_orig_y) ** 2)
+                            real_dist_meters = dist_px * cam_config["pixel_to_meter"]
+
+                            if real_dist_meters < VALIDATION_RADIUS_METERS:
+                                track_age = len(vehicle.centroids)
+                                is_original_victim = track_id in pending['ids']
+                                is_new_object = track_age < VALIDATION_FRAMES  # Xe/Người bị văng, Tracker cấp ID mới
+
+                                # Chỉ chốt tai nạn nếu vật thể nằm lại đường ĐÚNG LÀ phương tiện liên quan
+                                if is_original_victim or is_new_object:
+                                    stuck_vehicles += 1
+                                    evidence_logs.append(
+                                        f"ID:{track_id}({vehicle.vehicle_type}) bất động cách {real_dist_meters:.1f}m")
+
+                        if stuck_vehicles >= 1:
+                            cx, cy = pending['centroid']
+                            active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
+                            last_incident_time = time.time()
+
+                            print("\n" + "=" * 60)
+                            print(
+                                f"\033[1;31m🚨 [CRASH CONFIRMED] XÁC NHẬN TAI NẠN (TỪ NGHI NGỜ FRAME {pending['start_frame']})! 🚨\033[0m")
+                            print(
+                                f"📍 Đối tượng ban đầu: {pending['vehicle_types'][0]}(ID:{pending['ids'][0]}) & {pending['vehicle_types'][1]}(ID:{pending['ids'][1]})")
+                            print(f"🔍 Bằng chứng khởi phát: {' + '.join(pending['reasons'])}")
+                            print(f"🔍 Bằng chứng hiện trường: {stuck_vehicles} nạn nhân.")
+                            for log_msg in evidence_logs:
+                                print(f"   -> {log_msg}")
+                            print("=" * 60 + "\n")
+
+                            clip_frames = list(reader.history_buffer)
+                            clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
+                            video_writer_worker.save_clip(clip_frames, clip_path)
+
+                            accident_payload = {
+                                "camera_id": CAMERA_ID,
+                                "frame_count": frame_count,
+                                "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                "accident_detected": True,
+                                "confidence_score": 0.85,
+                                "alert_level": "HIGH",
+                                "vehicles_involved": pending['vehicle_types'],
+                                "video_clip_path": clip_path
+                            }
+                            network_worker.send_alert(accident_payload)
+                        else:
+                            print(
+                                f"\033[92m[✅ FALSE ALARM] Hủy nghi ngờ Frame {pending['start_frame']}. Hiện trường đã giải tỏa.\033[0m")
+
+                    pending_incidents = surviving_pending
 
             # 3. DỌN DẸP BỘ NHỚ AI
             active_incidents = [inc for inc in active_incidents if frame_count - inc['frame'] < COOLDOWN_FRAMES]

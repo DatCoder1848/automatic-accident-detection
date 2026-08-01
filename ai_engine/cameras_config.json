@@ -241,7 +241,7 @@
   },
   "CAM_NOR_9": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
-    "source": "../data_storage/video_clips/negative/normal_8.mp4",
+    "source": "../data_storage/video_clips/negative/normal_9.mp4",
     "src_pts": [[360, 181], [602, 128], [839, 285], [512, 535]],
     "pixel_to_meter": 0.05,
     "bev_width": 300,
