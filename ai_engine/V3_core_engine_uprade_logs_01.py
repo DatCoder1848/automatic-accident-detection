@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_NOR_6" # "CAM_CRASH_11"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID = "CAM_CRASH_1"  # "CAM_NOR_6" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -215,7 +215,7 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLOv8...")
-    model = YOLO("trash/yolov8n.pt")
+    model = YOLO("yolo11s.pt")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
@@ -265,7 +265,7 @@ if __name__ == "__main__":
 
             # --- CHẠY YOLO TRACKING ---
             results = model.track(frame, classes=[2, 3, 5, 7], persist=True, imgsz=1024, agnostic_nms=False,
-                                  tracker="custom_tracker.yaml", conf=0.2, iou=0.7, verbose=False)
+                                  tracker="botsort.yaml", conf=0.2, iou=0.7, verbose=False)
 
             current_frame_ids = []
 

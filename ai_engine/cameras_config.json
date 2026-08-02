@@ -6,10 +6,11 @@
     "pixel_to_meter": 0.05,
     "bev_width": 150,
     "bev_height": 250,
-    "horizon_y": 200,
-    "y_split": 400,
-    "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "horizon_y": 50,
+    "y_split": 150,
+    "thresh_near": -4.0,
+    "thresh_far": -35.0,
+    "dist_thresh": 3.0
   },
   "CAM_CRASH_2": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -21,7 +22,8 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "dist_thresh": 3.0
   },
   "CAM_CRASH_3": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -33,7 +35,8 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -5.0,
-    "thresh_far": -6.0
+    "thresh_far": -6.0,
+    "dist_thresh": 3.0
   },
   "CAM_CRASH_4": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -45,7 +48,10 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "dist_thresh": 3.0,
+    "validation_max_v": 4.5,
+    "require_stuck_vehicle": false
   },
   "CAM_CRASH_5": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -57,7 +63,10 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "dist_thresh": 3.0,
+    "validation_max_v": 4.5,
+    "require_stuck_vehicle": false
   },
   "CAM_CRASH_6": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -69,7 +78,10 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "dist_thresh": 3.0,
+    "validation_max_v": 4.5,
+    "require_stuck_vehicle": false
   },
   "CAM_CRASH_7": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -81,7 +93,8 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -4.0,
-    "thresh_far": -7.0
+    "thresh_far": -7.0,
+    "dist_thresh": 3.0
   },
   "CAM_CRASH_8": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
@@ -141,7 +154,8 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "require_stuck_vehicle": false
   },
   "CAM_NOR_1": {
     "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",

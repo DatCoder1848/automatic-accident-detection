@@ -223,7 +223,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_CRASH_9" # "CAM_NOR_4" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID =    "CAM_CRASH_12" #  "CAM_NOR_1"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -398,150 +398,181 @@ if __name__ == "__main__":
                         pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
                         real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
 
-                        # MỞ CỬA CHO GIA TỐC: Khoảng cách dưới 5.0 mét (Đủ bắt tâm xe tải 3.4m)
-                        if real_dist_meters < 5.0 or iou_score > 0.03:
+                        smooth_a_A = get_smooth_accel(vehicle_A, frames_back=10)
+                        smooth_a_B = get_smooth_accel(vehicle_B, frames_back=10)
 
-                            smooth_a_A = get_smooth_accel(vehicle_A, frames_back=10)
-                            smooth_a_B = get_smooth_accel(vehicle_B, frames_back=10)
+                        v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
+                        v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
+
+                        max_v_A = max(list(vehicle_A.velocities)[-5:]) if len(vehicle_A.velocities) > 0 else 0.0
+                        max_v_B = max(list(vehicle_B.velocities)[-5:]) if len(vehicle_B.velocities) > 0 else 0.0
+
+                        edge_A = is_in_edge(vehicle_A.current_box)
+                        edge_B = is_in_edge(vehicle_B.current_box)
+
+                        # --- GỌI HÀM DEBUG TỪ UTILS.PY ---
+                        log_raw_crash_data(
+                            frame_count, id_A, id_B,
+                            vehicle_A.vehicle_type, vehicle_B.vehicle_type,
+                            iou_score, real_dist_meters,
+                            edge_A, edge_B,
+                            v_A, max_v_A, smooth_a_A,
+                            v_B, max_v_B, smooth_a_B
+                        )
+                        # ---------------------------------
+
+                        # Tính khoảng cách Mét thực tế ngay lập tức
+                        bev_A = vehicle_A.centroids_bev[-1]
+                        bev_B = vehicle_B.centroids_bev[-1]
+                        pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
+                        real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
+
+                        dist_limit = cam_config.get("dist_thresh", 5.0)
+                        if real_dist_meters < dist_limit or iou_score > 0.03:
+                            # Tính toán toàn bộ thông số Động học & Không gian trước khi lọc
+                            smooth_a_A = get_smooth_accel(vehicle_A)
+                            smooth_a_B = get_smooth_accel(vehicle_B)
 
                             v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
                             v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
+                            max_v_A = max(list(vehicle_A.velocities)[-5:]) if len(
+                                vehicle_A.velocities) > 0 else 0.0
+                            max_v_B = max(list(vehicle_B.velocities)[-5:]) if len(
+                                vehicle_B.velocities) > 0 else 0.0
+                            delta_v_A = max_v_A - v_A
+                            delta_v_B = max_v_B - v_B
+                            age_A = len(vehicle_A.centroids)
+                            age_B = len(vehicle_B.centroids)
 
-                            max_v_A = max(list(vehicle_A.velocities)[-5:]) if len(vehicle_A.velocities) > 0 else 0.0
-                            max_v_B = max(list(vehicle_B.velocities)[-5:]) if len(vehicle_B.velocities) > 0 else 0.0
+                            # ================= LOG CHI TIẾT ĐỂ BẮT LỖI TẬN GỐC =================
+                            # In log khi hai xe ở gần (< 5m) và có động học bất thường (phanh/văng) hoặc đè nhau
+                            if real_dist_meters < 5.0 and (
+                                    smooth_a_A < -3.0 or smooth_a_B < -3.0 or iou_score > 0.15):
+                                box_A_str = f"[{int(vehicle_A.current_box[0])},{int(vehicle_A.current_box[1])},{int(vehicle_A.current_box[2])},{int(vehicle_A.current_box[3])}]"
+                                box_B_str = f"[{int(vehicle_B.current_box[0])},{int(vehicle_B.current_box[1])},{int(vehicle_B.current_box[2])},{int(vehicle_B.current_box[3])}]"
 
+                                print(
+                                    f"\n[DEBUG-AI] Frame {frame_count} | {vehicle_A.vehicle_type}(ID:{id_A}) & {vehicle_B.vehicle_type}(ID:{id_B})")
+                                print(
+                                    f"  -> Không gian: IoU 2D = {iou_score:.2f} | Khoảng cách thực = {real_dist_meters:.1f}m")
+                                print(f"  -> ID {id_A} (Tuổi: {age_A}f): Box = {box_A_str}")
+                                print(
+                                    f"     Động học: v={v_A:.1f} | max_v={max_v_A:.1f} | dV={delta_v_A:.1f} | a_mượt={smooth_a_A:.1f}")
+                                print(f"  -> ID {id_B} (Tuổi: {age_B}f): Box = {box_B_str}")
+                                print(
+                                    f"     Động học: v={v_B:.1f} | max_v={max_v_B:.1f} | dV={delta_v_B:.1f} | a_mượt={smooth_a_B:.1f}")
+                            # ===================================================================
+
+                            # 1. KIỂM TRA BÓNG MA (GHOST DUPLICATION)
+                            is_ghost_A = hasattr(vehicle_A, 'lost_frames') and vehicle_A.lost_frames > 0
+                            is_ghost_B = hasattr(vehicle_B, 'lost_frames') and vehicle_B.lost_frames > 0
+                            if (is_ghost_A or is_ghost_B) and iou_score > 0.4:
+                                continue
+
+                            # LỌC BÒ CHẬM (CRAWLING FILTER): Bỏ qua nếu cả 2 xe đều đang đi rà rà (< 5 km/h)
+                            if max_v_A < 5.0 and max_v_B < 5.0:
+                                continue
+
+                            # TÍNH NGƯỠNG GIA TỐC ĐỘNG
+                            t_near = cam_config.get("thresh_near", -6.0)
+                            t_far = cam_config.get("thresh_far", -9.0)
+                            y_split = cam_config.get("y_split", 400)
+                            horizon_y = cam_config.get("horizon_y", 200)
+
+
+                            def get_dynamic_thresh(cy):
+                                if cy >= y_split: return t_near
+                                if cy <= horizon_y: return t_far
+                                ratio = (cy - horizon_y) / (y_split - horizon_y)
+                                return t_far + ratio * (t_near - t_far)
+
+
+                            thresh_A = get_dynamic_thresh(cy_A)
+                            thresh_B = get_dynamic_thresh(cy_B)
+
+                            # KHÓA CHẶT RÌA MÀN HÌNH CHO CẢ 2 ĐIỀU KIỆN
                             edge_A = is_in_edge(vehicle_A.current_box)
                             edge_B = is_in_edge(vehicle_B.current_box)
 
-                            # --- GỌI HÀM DEBUG TỪ UTILS.PY ---
-                            log_raw_crash_data(
-                                frame_count, id_A, id_B,
-                                vehicle_A.vehicle_type, vehicle_B.vehicle_type,
-                                iou_score, real_dist_meters,
-                                edge_A, edge_B,
-                                v_A, max_v_A, smooth_a_A,
-                                v_B, max_v_B, smooth_a_B
-                            )
-                            # ---------------------------------
+                            is_physical_crush = (iou_score > 0.15) and (real_dist_meters < 2.5) and not (
+                                        edge_A or edge_B)
 
-                            if iou_score > 0.15:
-                                # Tính khoảng cách Mét thực tế
-                                bev_A = vehicle_A.centroids_bev[-1]
-                                bev_B = vehicle_B.centroids_bev[-1]
-                                pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
-                                real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
+                            # 1. THÊM: Lưu lại danh sách các xe vốn dĩ đang đỗ (Vật thể nền / Hòn đá)
+                            background_objs = []
+                            if max_v_A < 2.0: background_objs.append(id_A)
+                            if max_v_B < 2.0: background_objs.append(id_B)
 
-                                # Tính toán toàn bộ thông số Động học & Không gian trước khi lọc
-                                smooth_a_A = get_smooth_accel(vehicle_A)
-                                smooth_a_B = get_smooth_accel(vehicle_B)
+                            # Shock: Gia tốc âm sốc và khoảng cách < 5.0m (Bắt cú đâm tâm xe tải 3.4m)
+                            # Đồng thời siết chặt: Phải CÓ ĐÀ chạy thực sự (> 5.0) mới được tính là phanh gấp, tránh nhiễu tĩnh.
+                            valid_shock_A = (smooth_a_A < thresh_A) and (max_v_A > 5.0)
+                            valid_shock_B = (smooth_a_B < thresh_B) and (max_v_B > 5.0)
 
-                                v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
-                                v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
-                                max_v_A = max(list(vehicle_A.velocities)[-5:]) if len(
-                                    vehicle_A.velocities) > 0 else 0.0
-                                max_v_B = max(list(vehicle_B.velocities)[-5:]) if len(
-                                    vehicle_B.velocities) > 0 else 0.0
-                                delta_v_A = max_v_A - v_A
-                                delta_v_B = max_v_B - v_B
-                                age_A = len(vehicle_A.centroids)
-                                age_B = len(vehicle_B.centroids)
-
-                                # ================= LOG CHI TIẾT ĐỂ BẮT LỖI TẬN GỐC =================
-                                # In log khi hai xe ở gần (< 5m) và có động học bất thường (phanh/văng) hoặc đè nhau
-                                if real_dist_meters < 5.0 and (
-                                        smooth_a_A < -3.0 or smooth_a_B < -3.0 or iou_score > 0.15):
-                                    box_A_str = f"[{int(vehicle_A.current_box[0])},{int(vehicle_A.current_box[1])},{int(vehicle_A.current_box[2])},{int(vehicle_A.current_box[3])}]"
-                                    box_B_str = f"[{int(vehicle_B.current_box[0])},{int(vehicle_B.current_box[1])},{int(vehicle_B.current_box[2])},{int(vehicle_B.current_box[3])}]"
-
-                                    print(
-                                        f"\n[DEBUG-AI] Frame {frame_count} | {vehicle_A.vehicle_type}(ID:{id_A}) & {vehicle_B.vehicle_type}(ID:{id_B})")
-                                    print(
-                                        f"  -> Không gian: IoU 2D = {iou_score:.2f} | Khoảng cách thực = {real_dist_meters:.1f}m")
-                                    print(f"  -> ID {id_A} (Tuổi: {age_A}f): Box = {box_A_str}")
-                                    print(
-                                        f"     Động học: v={v_A:.1f} | max_v={max_v_A:.1f} | dV={delta_v_A:.1f} | a_mượt={smooth_a_A:.1f}")
-                                    print(f"  -> ID {id_B} (Tuổi: {age_B}f): Box = {box_B_str}")
-                                    print(
-                                        f"     Động học: v={v_B:.1f} | max_v={max_v_B:.1f} | dV={delta_v_B:.1f} | a_mượt={smooth_a_B:.1f}")
-                                # ===================================================================
-
-                                # 1. KIỂM TRA BÓNG MA (GHOST DUPLICATION)
-                                is_ghost_A = hasattr(vehicle_A, 'lost_frames') and vehicle_A.lost_frames > 0
-                                is_ghost_B = hasattr(vehicle_B, 'lost_frames') and vehicle_B.lost_frames > 0
-                                if (is_ghost_A or is_ghost_B) and iou_score > 0.4:
-                                    continue
-
-                                # LỌC BÒ CHẬM (CRAWLING FILTER): Bỏ qua nếu cả 2 xe đều đang đi rà rà (< 5 km/h)
-                                if max_v_A < 5.0 and max_v_B < 5.0:
-                                    continue
-
-                                # TÍNH NGƯỠNG GIA TỐC ĐỘNG
-                                t_near = cam_config.get("thresh_near", -6.0)
-                                t_far = cam_config.get("thresh_far", -9.0)
-                                y_split = cam_config.get("y_split", 400)
-                                horizon_y = cam_config.get("horizon_y", 200)
+                            # 2. SỬA: Thêm điều kiện (iou_score > 0.01) để chống báo ảo khi 2 xe không hề chạm nhau
+                            # 1. TÍNH IOU MỞ RỘNG (DILATION):
+                            # Nới rộng mỗi hộp bao ra 30 pixel để bắt các vụ đâm ngang sườn (IoU bị hụt do góc cam)
+                            def get_expanded_box(box, expand=30):
+                                return [box[0] - expand, box[1] - expand, box[2] + expand, box[3] + expand]
 
 
-                                def get_dynamic_thresh(cy):
-                                    if cy >= y_split: return t_near
-                                    if cy <= horizon_y: return t_far
-                                    ratio = (cy - horizon_y) / (y_split - horizon_y)
-                                    return t_far + ratio * (t_near - t_far)
+                            boxA_exp = get_expanded_box(vehicle_A.current_box)
+                            boxB_exp = get_expanded_box(vehicle_B.current_box)
+                            iou_expanded = calculate_iou(boxA_exp, boxB_exp)
 
+                            # 2. KIỂM TRA ĐÀ CHẠY
+                            valid_shock_A = (smooth_a_A < thresh_A) and (max_v_A > 5.0)
+                            valid_shock_B = (smooth_a_B < thresh_B) and (max_v_B > 5.0)
 
-                                thresh_A = get_dynamic_thresh(cy_A)
-                                thresh_B = get_dynamic_thresh(cy_B)
+                            # 3. LUẬT PHẢN ỨNG VẬT LÝ (FLINCH RULE):
+                            # Để là một cặp va chạm thực sự, nếu 1 xe bị sốc, xe kia bắt buộc phải là hòn đá (< 2.0)
+                            # HOẶC phải có phản ứng vật lý (a_mượt < -3.0 hoặc dV > 4.5).
+                            flinch_A = (max_v_A < 2.0) or (smooth_a_A < -3.0) or (delta_v_A > 4.5)
+                            flinch_B = (max_v_B < 2.0) or (smooth_a_B < -3.0) or (delta_v_B > 4.5)
 
-                                # KHÓA CHẶT RÌA MÀN HÌNH CHO CẢ 2 ĐIỀU KIỆN
-                                edge_A = is_in_edge(vehicle_A.current_box)
-                                edge_B = is_in_edge(vehicle_B.current_box)
+                            # 4. CHỐT KÍCH HOẠT:
+                            is_kinematic_shock = (real_dist_meters < 5.0) and (iou_expanded > 0.01) and \
+                                                 ((valid_shock_A and flinch_B) or (valid_shock_B and flinch_A)) and \
+                                                 not (edge_A or edge_B)
 
-                                is_physical_crush = (iou_score > 0.25) and (real_dist_meters < 1.5) and not (
-                                            edge_A or edge_B)
-                                # Chỉ công nhận gia tốc sốc nếu chiếc xe bị sốc ĐANG CÓ ĐÀ CHẠY thật sự (> 5.0 km/h)
-                                valid_shock_A = (smooth_a_A < thresh_A) and (max_v_A > 5.0)
-                                valid_shock_B = (smooth_a_B < thresh_B) and (max_v_B > 5.0)
-                                is_kinematic_shock = (real_dist_meters < 2.5) and (valid_shock_A or valid_shock_B) and not (edge_A or edge_B)
+                            if is_physical_crush or is_kinematic_shock:
+                                crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
+                                crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
+                                bev_cx = (bev_A[0] + bev_B[0]) / 2.0
+                                bev_cy = (bev_A[1] + bev_B[1]) / 2.0
 
-                                if is_physical_crush or is_kinematic_shock:
-                                    crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
-                                    crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
-                                    bev_cx = (bev_A[0] + bev_B[0]) / 2.0
-                                    bev_cy = (bev_A[1] + bev_B[1]) / 2.0
-
-                                    is_new_suspect = True
-                                    for incident in active_incidents:
-                                        if frame_count - incident['frame'] < COOLDOWN_FRAMES:
-                                            dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
-                                                    crash_cy - incident['centroid'][1]) ** 2)
-                                            if dist < 100:
-                                                is_new_suspect = False;
-                                                break
-
-                                    for pending in pending_incidents:
-                                        dist = math.sqrt((crash_cx - pending['centroid'][0]) ** 2 + (
-                                                crash_cy - pending['centroid'][1]) ** 2)
+                                is_new_suspect = True
+                                for incident in active_incidents:
+                                    if frame_count - incident['frame'] < COOLDOWN_FRAMES:
+                                        dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
+                                                crash_cy - incident['centroid'][1]) ** 2)
                                         if dist < 100:
                                             is_new_suspect = False;
                                             break
 
-                                    if is_new_suspect:
-                                        reasons_cache = [f"Khoảng cách: {real_dist_meters:.1f}m"]
-                                        if is_physical_crush: reasons_cache.append(
-                                            f"Giao nhau (IoU: {iou_score:.2f})")
-                                        if is_kinematic_shock: reasons_cache.append(
-                                            f"Phanh/Văng (aA:{smooth_a_A:.1f}, aB:{smooth_a_B:.1f})")
+                                for pending in pending_incidents:
+                                    dist = math.sqrt((crash_cx - pending['centroid'][0]) ** 2 + (
+                                            crash_cy - pending['centroid'][1]) ** 2)
+                                    if dist < 100:
+                                        is_new_suspect = False;
+                                        break
 
-                                        print(
-                                            f"\033[93m[⚠️ SUSPECT] Đưa vào diện tình nghi tại Frame {frame_count}. Chờ 3s kiểm chứng...\033[0m")
-                                        pending_incidents.append({
-                                            'centroid': (crash_cx, crash_cy),
-                                            'bev_centroid': (bev_cx, bev_cy),
-                                            'start_frame': frame_count,
-                                            'vehicle_types': [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
-                                            'ids': [id_A, id_B],
-                                            'reasons': reasons_cache
-                                        })
+                                if is_new_suspect:
+                                    reasons_cache = [f"Khoảng cách: {real_dist_meters:.1f}m"]
+                                    if is_physical_crush: reasons_cache.append(
+                                        f"Giao nhau (IoU: {iou_score:.2f})")
+                                    if is_kinematic_shock: reasons_cache.append(
+                                        f"Phanh/Văng (aA:{smooth_a_A:.1f}, aB:{smooth_a_B:.1f})")
+
+                                    print(
+                                        f"\033[93m[⚠️ SUSPECT] Đưa vào diện tình nghi tại Frame {frame_count}. Chờ 3s kiểm chứng...\033[0m")
+                                    pending_incidents.append({
+                                        'centroid': (crash_cx, crash_cy),
+                                        'bev_centroid': (bev_cx, bev_cy),
+                                        'start_frame': frame_count,
+                                        'vehicle_types': [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
+                                        'ids': [id_A, id_B],
+                                        'background_objs': background_objs,
+                                        'reasons': reasons_cache
+                                    })
 
                 # --- GIAI ĐOẠN 2: KIỂM CHỨNG THEO ĐỐI TƯỢNG VÀ KHÔNG GIAN THỰC (METERS) ---
                 VALIDATION_RADIUS_METERS = 6.0  # Quét phạm vi 6 mét để bắt gọn xe trượt văng
@@ -558,12 +589,19 @@ if __name__ == "__main__":
                     stuck_vehicles = 0
                     evidence_logs = []
 
+                    # ĐỌC CỜ CẤU HÌNH TỪ JSON (Mặc định là True cho an toàn tuyệt đối với video negative)
+                    require_stuck = cam_config.get("require_stuck_vehicle", True)
+
                     for track_id, vehicle in active_trackers.items():
                         if hasattr(vehicle, 'lost_frames') and vehicle.lost_frames > 0:
                             continue
 
                         v_current = vehicle.velocities[-1] if len(vehicle.velocities) > 0 else 0.0
-                        if v_current > 2.0:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
+
+                        # ĐỌC NGƯỠNG ĐỘNG TỪ FILE JSON CỦA TỪNG CAMERA (Mặc định là 2.0 nếu không cấu hình)
+                        max_allowed_v = cam_config.get("validation_max_v", 2.0)
+
+                        if v_current > max_allowed_v:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
                             continue
 
                         # Đổi khoảng cách trên ảnh sang khoảng cách Mét thực tế
@@ -572,24 +610,34 @@ if __name__ == "__main__":
                         real_dist_meters = dist_px * cam_config["pixel_to_meter"]
 
                         if real_dist_meters < VALIDATION_RADIUS_METERS:
-                            #track_age = len(vehicle.centroids)
-                            # is_original_victim = track_id in pending['ids']
-                            # is_new_object = track_age < VALIDATION_FRAMES  # Xe/Người bị văng, Tracker cấp ID mới
-                            #
-                            # # Chỉ chốt tai nạn nếu vật thể nằm lại đường ĐÚNG LÀ phương tiện liên quan
-                            # if is_original_victim or is_new_object:
-                            #     stuck_vehicles += 1
                             # SỬA LẠI ĐÚNG NHƯ SAU:
                             # NHÁT CẮT 3: TỪ CHỐI NHẬN VƠ
+                            # 1. Xe này có phải là 1 trong 2 xe liên quan ban đầu không?
                             is_original_victim = track_id in pending['ids']
 
-                            # CHỈ chấp nhận chính phương tiện gốc nằm lại hiện trường
-                            if is_original_victim:
+                            # 2. THÊM: Xe này có nằm trong danh sách Hòn đá (đứng im từ đầu) không?
+                            is_background = track_id in pending.get('background_objs', [])
+
+                            # 3. SỬA: CHỈ chấp nhận xe gốc nằm lại VÀ xe đó KHÔNG PHẢI là hòn đá
+                            if is_original_victim and not is_background:
                                 stuck_vehicles += 1
                                 evidence_logs.append(
                                     f"ID:{track_id}({vehicle.vehicle_type}) bất động cách {real_dist_meters:.1f}m")
 
-                    if stuck_vehicles >= 1:
+                    # --- QUYẾT ĐỊNH XÁC NHẬN TAI NẠN DỰA TRÊN CẤU HÌNH CAMERA ---
+                    is_crash_confirmed = False
+                    if not require_stuck:
+                        # TRƯỜNG HỢP 1: Camera hẻm cho phép phóng đi (như CAM_CRASH_6)
+                        # Chỉ cần qua đủ thời gian kiểm chứng 3 giây mà vùng nghi ngờ hợp lệ là chốt luôn!
+                        is_crash_confirmed = True
+                        evidence_logs.append("Xác nhận tai nạn phương tiện tốc độ cao rời khỏi hiện trường.")
+                    else:
+                        # TRƯỜNG HỢP 2: Camera đường đông / negative
+                        # Bắt buộc hiện trường phải có ít nhất 1 phương tiện bất động/dừng lại
+                        if stuck_vehicles >= 1:
+                            is_crash_confirmed = True
+
+                    if is_crash_confirmed:
                         cx, cy = pending['centroid']
                         active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
                         last_incident_time = time.time()
