@@ -1,22 +1,27 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '../../generated/prisma/client.js';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { resolve } from 'path';
+import { pathToFileURL } from 'url';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
-  private client: InstanceType<typeof PrismaClient>;
-
-  constructor() {
-    const adapter = new PrismaPg(process.env.DATABASE_URL!);
-    this.client = new PrismaClient({ adapter });
-  }
+  private client: any;
 
   async onModuleInit() {
+    const adapter = new PrismaPg(process.env.DATABASE_URL!);
+    // Dynamic import of the ESM-only Prisma generated client
+    const clientPath = resolve(process.cwd(), 'generated', 'prisma', 'client.ts');
+    const mod = await import(pathToFileURL(clientPath).href);
+    // tsx wraps ESM exports under module.exports
+    const exports = mod['module.exports'] || mod.default || mod;
+    const PrismaClient = exports.PrismaClient;
+    this.client = new PrismaClient({ adapter });
     await this.client.$connect();
+    console.log('[Prisma] ✅ Connected to database');
   }
 
   async onModuleDestroy() {
-    await this.client.$disconnect();
+    await this.client?.$disconnect();
   }
 
   get user() { return this.client.user; }
