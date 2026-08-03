@@ -8,7 +8,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private client: any;
 
   async onModuleInit() {
-    const adapter = new PrismaPg(process.env.DATABASE_URL!);
+    const dbUrl = process.env.DATABASE_URL || process.env.DIRECT_URL!;
+    const adapter = new PrismaPg(dbUrl);
     // Dynamic import of the ESM-only Prisma generated client
     const clientPath = resolve(process.cwd(), 'generated', 'prisma', 'client.ts');
     const mod = await import(pathToFileURL(clientPath).href);
