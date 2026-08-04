@@ -51,6 +51,7 @@ model Accident {
   status      AccidentStatus @default(PENDING)
   videoClipUrl String?       @map("video_clip_url")
   thumbnailUrl String?       @map("thumbnail_url")
+  vehiclesInvolved String[]  @default([]) @map("vehicles_involved")
   latitude    Float?
   longitude   Float?
   description String?
