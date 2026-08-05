@@ -12,9 +12,19 @@ export class AccidentsService {
   ) {}
 
   async create(data: any) {
-    const accident = await this.prisma.accident.create({ data });
+    // Only pass fields that exist in the Accident model
+    const { cameraId, confidence, severity, description, detectedAt, videoClipUrl, thumbnailUrl, vehiclesInvolved, latitude, longitude } = data;
+    const cleanData: any = { cameraId, confidence, severity };
+    if (description) cleanData.description = description;
+    if (detectedAt) cleanData.detectedAt = new Date(detectedAt);
+    if (videoClipUrl) cleanData.videoClipUrl = videoClipUrl;
+    if (thumbnailUrl) cleanData.thumbnailUrl = thumbnailUrl;
+    if (vehiclesInvolved) cleanData.vehiclesInvolved = vehiclesInvolved;
+    if (latitude != null) cleanData.latitude = latitude;
+    if (longitude != null) cleanData.longitude = longitude;
+
+    const accident = await this.prisma.accident.create({ data: cleanData });
     await this.alertsService.createForAccident(accident.id);
-    // Emit real-time event to all connected clients
     this.eventsGateway.emitNewAccident(accident);
     return accident;
   }
