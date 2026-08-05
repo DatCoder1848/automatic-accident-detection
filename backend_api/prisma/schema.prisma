@@ -44,6 +44,7 @@ model Camera {
 
 model Accident {
   id          String         @id @default(uuid())
+  incidentId  String?        @map("incident_id")
   cameraId    String         @map("camera_id")
   detectedAt  DateTime       @default(now()) @map("detected_at")
   confidence  Float
