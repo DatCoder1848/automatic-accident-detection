@@ -46,8 +46,8 @@ GET /cameras
 
 **AI sử dụng:**
 - `id` → dùng làm `cameraId` khi report accident
-- `streamUrl` → video source path
-- `aiConfig` → load calibration params
+- `streamUrl` → video source (local path khi dev, RTSP URL khi deploy thật)
+- `aiConfig` → calibration params cho camera đó (src_pts, thresholds, etc.)
 
 ---
 
