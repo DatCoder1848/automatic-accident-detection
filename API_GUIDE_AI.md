@@ -2,7 +2,7 @@
 
 ## Base URL
 ```
-http://localhost:3001
+http://localhost:3000
 ```
 
 ## Authentication
@@ -127,7 +127,7 @@ X-API-Key: ai-service-secret-key
 ```python
 import requests
 
-API_URL = "http://localhost:3001"
+API_URL = "http://localhost:3000"
 API_KEY = "ai-service-secret-key"
 HEADERS = {"Content-Type": "application/json", "X-API-Key": API_KEY}
 
