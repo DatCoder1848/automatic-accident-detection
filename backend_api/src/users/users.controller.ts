@@ -2,7 +2,6 @@ import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/co
 import { ApiTags, ApiOperation, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import { Prisma } from '@prisma/client'; //from '../../generated/prisma/client.js';
 
 @ApiTags('Users')
 @ApiBearerAuth()

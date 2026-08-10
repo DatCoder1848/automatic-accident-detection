@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
     # THÊM ĐOẠN NÀY DÀNH CHO ĐO FPS:
     smoothed_fps = 0.0  # Dùng EMA để làm mượt FPS hiển thị
-    csv_file = open('fps_log_thuc_te.csv', 'w', newline='', encoding='utf-8')
+    csv_file = open('fps_log_thuc_te_02.csv', 'w', newline='', encoding='utf-8')
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(['Frame', 'So_Xe', 'FPS'])  # Tiêu đề cột cho Excel
 

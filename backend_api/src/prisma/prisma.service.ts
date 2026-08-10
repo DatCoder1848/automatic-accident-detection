@@ -1,29 +1,34 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client'; //from '../../generated/prisma/client.js';
+import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { resolve } from 'path';
-import { pathToFileURL } from 'url';
+import pg from 'pg';
 
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
-  private client: any;
+  private client: PrismaClient;
+
+  constructor() {
+    const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
+
+    // Khởi tạo pg.Pool và ép kiểu SSL bỏ qua kiểm tra certificate
+    const pool = new pg.Pool({
+      connectionString,
+      ssl: {
+        rejectUnauthorized: false, // Bắt buộc để nhận diện self-signed cert của Supabase
+      },
+    });
+
+    const adapter = new PrismaPg(pool);
+    this.client = new PrismaClient({ adapter });
+  }
 
   async onModuleInit() {
-    const dbUrl = process.env.DATABASE_URL || process.env.DIRECT_URL!;
-    const adapter = new PrismaPg(dbUrl);
-    // Dynamic import of the ESM-only Prisma generated client
-    const clientPath = resolve(process.cwd(), 'generated', 'prisma', 'client.ts');
-    const mod = await import(pathToFileURL(clientPath).href);
-    // tsx wraps ESM exports under module.exports
-    const exports = mod['module.exports'] || mod.default || mod;
-    const PrismaClient = exports.PrismaClient;
-    this.client = new PrismaClient({ adapter });
     await this.client.$connect();
     console.log('[Prisma] ✅ Connected to database');
   }
 
   async onModuleDestroy() {
-    await this.client?.$disconnect();
+    await this.client.$disconnect();
   }
 
   get user() { return this.client.user; }

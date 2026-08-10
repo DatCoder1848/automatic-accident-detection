@@ -5,6 +5,8 @@ import time
 import requests
 from collections import deque
 
+#from ai_engine.trash.main_ai import accident_payload
+
 
 class VideoReader:
     def __init__(self, source, queue_size=30):
@@ -120,11 +122,11 @@ class NetworkWorker:
                     f"\033[94m[🌐 API SEND] Frame: {payload.get('frame_count')} | Objects: {', '.join(payload.get('vehicles_involved', []))}...\033[0m")
 
                 # --- PHẦN KẾT NỐI SERVER THẬT (Mở comment khi có server của Phúc) ---
-                # response = requests.post(self.api_url, headers=self.headers, json=payload)
-                # if response.status_code in [200, 201]:
-                #     print("[NETWORK] Gửi thành công lên Backend!")
-                # else:
-                #     print(f"[NETWORK] Lỗi Backend trả về: {response.status_code}")
+                response = requests.post(self.api_url, headers=self.headers, json=payload)
+                if response.status_code in [200, 201]:
+                    print("\033[40;34m[NETWORK] Gửi thành công lên Backend!\033[0m")
+                else:
+                    print(f"\033[40;31m[NETWORK] Lỗi Backend trả về: {response.status_code}\033[0m")
 
                 # --- TRONG LÚC CHƯA CÓ SERVER, CHÚNG TA GIẢ LẬP GỬI MẤT 0.5 GIÂY ---
                 time.sleep(0.5)
@@ -133,7 +135,9 @@ class NetworkWorker:
             except queue.Empty:
                 continue  # Nếu băng chuyền trống thì lặp lại vòng lặp chờ đợi
             except Exception as e:
-                print(f"[NETWORK ERROR] Lỗi luồng mạng: {e}")
+                print(f"\033[40;31m[NETWORK ERROR] Lỗi mạng: {e}. Đang đẩy lại gói tin vào hàng đợi và chờ 5s...\033[0m")
+                self.api_queue.put(payload)  # Đẩy ngược lại vào Queue
+                time.sleep(5)  # Nghỉ 5 giây rồi mới gửi tiếp
 
     def stop(self):
         self.stopped = True
@@ -223,7 +227,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID =    "CAM_CRASH_12" #  "CAM_NOR_1"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID =   "CAM_NOR_3" # "CAM_CRASH_7" #  Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -236,7 +240,7 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLO11s...")
-    model = YOLO("yolo11s.pt")#.to("cuda")
+    model = YOLO("yolo11s.pt").to("cuda")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
@@ -257,7 +261,8 @@ if __name__ == "__main__":
     active_incidents = []
     pending_incidents = []  # Hàng đợi chứa các Vùng nghi ngờ
     INCIDENT_RADIUS = 200
-    COOLDOWN_FRAMES = 200
+    COOLDOWN_FRAMES = 900
+    SPATIAL_COOLDOWN_METERS = 12.0
     VALIDATION_FRAMES = 90  # Thời gian kiểm chứng 3 giây (30fps * 3s)
 
     # Các biến bổ sung phục vụ hiển thị UI cảnh báo giữ trong 5 giây
@@ -269,7 +274,7 @@ if __name__ == "__main__":
 
     # THÊM ĐOẠN NÀY DÀNH CHO ĐO FPS:
     smoothed_fps = 0.0  # Dùng EMA để làm mượt FPS hiển thị
-    csv_file = open('fps_log_thuc_te.csv', 'w', newline='', encoding='utf-8')
+    csv_file = open('fps_log_thuc_te_02.csv', 'w', newline='', encoding='utf-8')
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(['Frame', 'So_Xe', 'FPS'])  # Tiêu đề cột cho Excel
 
@@ -337,7 +342,7 @@ if __name__ == "__main__":
                             box_1 = active_trackers[id_1].current_box
                             box_2 = active_trackers[id_2].current_box
 
-                            # Tính IoU giữa 2 ID này
+                            # Tính IoS giữa 2 ID này
                             ios_dup = calculate_ios(box_1, box_2)
 
                             # Nếu đè nhau quá 65% -> 100% là 1 xe bị nhận diện thành 2 ID
@@ -381,6 +386,10 @@ if __name__ == "__main__":
 
                         vehicle_A = active_trackers[id_A]
                         vehicle_B = active_trackers[id_B]
+
+                        # Neu hai xe duoc canh bao truoc do thi bo qua
+                        if vehicle_A.is_reported and vehicle_B.is_reported:
+                            continue
 
                         if vehicle_A.current_box is None or vehicle_B.current_box is None:
                             continue
@@ -542,17 +551,21 @@ if __name__ == "__main__":
                                 is_new_suspect = True
                                 for incident in active_incidents:
                                     if frame_count - incident['frame'] < COOLDOWN_FRAMES:
-                                        dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
-                                                crash_cy - incident['centroid'][1]) ** 2)
-                                        if dist < 100:
-                                            is_new_suspect = False;
+                                        bev_inc_x, bev_inc_y = incident['bev_centroid']
+                                        dist_bev_px = math.sqrt((bev_cx - bev_inc_x) ** 2 + (bev_cy - bev_inc_y) ** 2)
+                                        dist_meters = dist_bev_px * cam_config["pixel_to_meter"]
+
+                                        if dist_meters < SPATIAL_COOLDOWN_METERS:
+                                            is_new_suspect = False
                                             break
 
                                 for pending in pending_incidents:
-                                    dist = math.sqrt((crash_cx - pending['centroid'][0]) ** 2 + (
-                                            crash_cy - pending['centroid'][1]) ** 2)
-                                    if dist < 100:
-                                        is_new_suspect = False;
+                                    bev_pend_x, bev_pend_y = pending['bev_centroid']
+                                    dist_bev_px = math.sqrt((bev_cx - bev_pend_x) ** 2 + (bev_cy - bev_pend_y) ** 2)
+                                    dist_meters = dist_bev_px * cam_config["pixel_to_meter"]
+
+                                    if dist_meters < SPATIAL_COOLDOWN_METERS:
+                                        is_new_suspect = False
                                         break
 
                                 if is_new_suspect:
@@ -639,7 +652,13 @@ if __name__ == "__main__":
 
                     if is_crash_confirmed:
                         cx, cy = pending['centroid']
-                        active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
+                        # 1. Lưu tâm BEV vào active_incidents
+                        bev_cx, bev_cy = pending['bev_centroid']
+                        active_incidents.append({'centroid': (cx, cy), 'bev_centroid': (bev_cx, bev_cy), 'frame': frame_count})
+                        # 2. Đánh dấu các ID liên quan là ĐÃ BÁO CÁO
+                        for vic_id in pending['ids']:
+                            if vic_id in active_trackers:
+                                active_trackers[vic_id].is_reported = True
                         last_incident_time = time.time()
 
                         print("\n" + "=" * 60)
@@ -653,20 +672,42 @@ if __name__ == "__main__":
                             print(f"   -> {log_msg}")
                         print("=" * 60 + "\n")
 
+                        # Take Snapshot:
+                        snapshot_path = f"../data_storage/snapshots/accident/accident_snap_{CAMERA_ID}_{frame_count}.jpg"
+                        cv2.imwrite(snapshot_path, frame)
+                        print(f"\033[92m[💾 DISK DONE] Đã chụp ảnh Snapshot hiện trường: {snapshot_path}\033[0m")
+
                         clip_frames = list(reader.history_buffer)
-                        clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
+                        clip_path = f"../data_storage/accident/accident_evid_{CAMERA_ID}_{frame_count}.mp4"
                         #video_writer_worker.save_clip(clip_frames, clip_path)
 
+                        timestamp = datetime.now(UTC)
+                        incident_id = f"INC_{CAMERA_ID}_{frame_count}"
+
+                        vehicles_list = pending.get('vehicle_types', [])
+                        vehicles_str = ", ".join(vehicles_list) if vehicles_list else "Chưa xác định"
+
                         accident_payload = {
-                            "camera_id": CAMERA_ID,
-                            "frame_count": frame_count,
-                            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            "accident_detected": True,
-                            "confidence_score": 0.85,
-                            "alert_level": "HIGH",
-                            "vehicles_involved": pending['vehicle_types'],
-                            "video_clip_path": clip_path
+                            "cameraId": "dab65b46-7175-4417-8383-eb3e56d09d79",
+                            "incidentId": incident_id,
+                            "confidence": 0.85,
+                            "severity": "HIGH",
+                            "description": f"Phát hiện va chạm giữa: {vehicles_str}",  # Giữ lại dòng này cực kỳ tiện
+                            "vehiclesInvolved": vehicles_list,
+                            "detectedAt": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "thumbnailUrl": snapshot_path,
+                            "videoClipUrl": clip_path
                         }
+
+                        # accident_payload = {
+                        #     "cameraId": "dab65b46-7175-4417-8383-eb3e56d09d79",
+                        #     "confidence": 0.85,
+                        #     "severity": "HIGH",
+                        #     "description": "HEHEHEHEHE",
+                        #     "latitude": 12.3456,
+                        #     "longitude": 123.456
+                        # }
+
                         network_worker.send_alert(accident_payload)
                     else:
                         print(

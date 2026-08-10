@@ -82,6 +82,7 @@ class VehicleTrack:
         # Hệ thống của cậu chạy 30 FPS, cấu hình FRAME_SKIP = 3
         # Tức là khoảng cách giữa 2 lần đo lường là 3/30 = 0.1 giây
         self.time_delta = 1/30
+        self.is_reported = False
 
     def update(self, box):
         self.current_box = box
