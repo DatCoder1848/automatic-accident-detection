@@ -13,11 +13,11 @@ export class CamerasService {
     return this.prisma.camera.findUnique({ where: { id } });
   }
 
-  create(data: { name: string; location: string; streamUrl: string; status?: string }) {
+  create(data: { name: string; location: string; streamUrl: string; status?: string; aiConfig?: any }) {
     return this.prisma.camera.create({ data: data as any });
   }
 
-  update(id: string, data: { name?: string; location?: string; streamUrl?: string; status?: string }) {
+  update(id: string, data: { name?: string; location?: string; streamUrl?: string; status?: string; aiConfig?: any }) {
     return this.prisma.camera.update({ where: { id }, data: data as any });
   }
 

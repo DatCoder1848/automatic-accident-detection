@@ -39,6 +39,9 @@ export default function AccidentDetail() {
         <Descriptions bordered column={2}>
           <Descriptions.Item label="Camera">{accident.camera?.name || 'Unknown'}</Descriptions.Item>
           <Descriptions.Item label="Location">{accident.camera?.location || '-'}</Descriptions.Item>
+          {accident.incidentId && (
+            <Descriptions.Item label="Incident ID">{accident.incidentId}</Descriptions.Item>
+          )}
           <Descriptions.Item label="Confidence">{(accident.confidence * 100).toFixed(0)}%</Descriptions.Item>
           <Descriptions.Item label="Severity">
             <Tag color={severityColors[accident.severity]}>{accident.severity}</Tag>
@@ -59,10 +62,21 @@ export default function AccidentDetail() {
           {accident.description && (
             <Descriptions.Item label="Description" span={2}>{accident.description}</Descriptions.Item>
           )}
+          {accident.vehiclesInvolved?.length > 0 && (
+            <Descriptions.Item label="Vehicles Involved" span={2}>{accident.vehiclesInvolved.join(', ')}</Descriptions.Item>
+          )}
           {accident.latitude && (
             <Descriptions.Item label="GPS">{accident.latitude}, {accident.longitude}</Descriptions.Item>
           )}
         </Descriptions>
+
+        {/* Thumbnail */}
+        {accident.thumbnailUrl && (
+          <div style={{ marginTop: 24 }}>
+            <h4>Snapshot</h4>
+            <img src={accident.thumbnailUrl} alt="Accident snapshot" style={{ maxWidth: 720, borderRadius: 8, width: '100%' }} />
+          </div>
+        )}
 
         {/* Video Section - 2 phase UI */}
         <div style={{ marginTop: 24 }}>
