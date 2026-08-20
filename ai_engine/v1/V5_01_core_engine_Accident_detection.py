@@ -3,8 +3,6 @@ import queue
 import requests
 from collections import deque
 
-#from ai_engine.trash.main_ai import accident_payload
-
 
 class VideoReader:
     def __init__(self, source, queue_size=30):

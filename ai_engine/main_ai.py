@@ -14,8 +14,8 @@ from cloud_service import CloudAlertManager
 if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
-    CONFIG_FILE = "v1/cameras_config.json"
-    CAMERA_ID =   "CAM_CRASH_7" # "CAM_NOR_3" #  Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CONFIG_FILE = "cameras_config.json"
+    CAMERA_ID =  "CAM_NOR_1" #  "CAM_CRASH_5" #  Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -28,10 +28,10 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLO11s...")
-    model = YOLO("../../yolo11s.pt")#.to("cuda")
+    model = YOLO("../yolo11s.pt")#.to("cuda")
 
     # Lấy đường dẫn video động từ JSON
-    test_video_path = "../" + cam_config["source"]
+    test_video_path = cam_config["source"]
 
     # Bật Luồng Đọc
     reader = VideoReader(test_video_path, queue_size=30).start()
@@ -426,8 +426,9 @@ if __name__ == "__main__":
                         vehicles_str = ", ".join(vehicles_list) if vehicles_list else "Chưa xác định"
 
                         # 3. Tạo Payload cơ sở (CHƯA CÓ URL)
+
                         base_payload = {
-                            "cameraId": "dab65b46-7175-4417-8383-eb3e56d09d79",
+                            "cameraId": cam_config["uuid"],
                             "incidentId": incident_id,
                             "confidence": 0.85,
                             "severity": "HIGH",

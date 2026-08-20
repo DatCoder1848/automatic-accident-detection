@@ -1,6 +1,6 @@
 {
   "CAM_CRASH_1": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "cec96c6a-7c12-46b7-a37b-4b91e77572d5",
     "source": "../data_storage/video_clips/positive/crash_1.mp4",
     "src_pts": [[432, 61], [750, 59], [1015, 511], [541, 561]],
     "pixel_to_meter": 0.05,
@@ -14,7 +14,7 @@
     "required_stuck_vehicle": false
   },
   "CAM_CRASH_2": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "3eed039d-4320-42f4-8617-7d0c2132a094",
     "source": "../data_storage/video_clips/positive/crash_2.mp4",
     "src_pts": [[357, 266], [678, 241], [721, 482], [261, 491]],
     "pixel_to_meter": 0.02,
@@ -27,7 +27,7 @@
     "dist_thresh": 3.0
   },
   "CAM_CRASH_3": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "50e9daf8-4c02-4f40-be73-e45ba9adc155",
     "source": "../data_storage/video_clips/positive/crash_3.mp4",
     "src_pts": [[508, 296], [817, 280], [937, 452], [515, 493]],
     "pixel_to_meter": 0.02,
@@ -40,7 +40,7 @@
     "dist_thresh": 3.0
   },
   "CAM_CRASH_4": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "50e9daf8-4c02-4f40-be73-e45ba9adc155",
     "source": "../data_storage/video_clips/positive/crash_4.mp4",
     "src_pts": [[325, 191], [574, 182], [934, 517], [550, 539]],
     "pixel_to_meter": 0.05,
@@ -55,7 +55,7 @@
     "require_stuck_vehicle": false
   },
   "CAM_CRASH_5": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "de7d3c19-4c22-42be-8aa2-17a1d80c9ac7",
     "source": "../data_storage/video_clips/positive/crash_5.mp4",
     "src_pts": [[325, 191], [574, 182], [934, 517], [550, 539]],
     "pixel_to_meter": 0.05,
@@ -70,7 +70,7 @@
     "require_stuck_vehicle": false
   },
   "CAM_CRASH_6": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "b615b444-f292-414a-b9ae-3a6650f1507b",
     "source": "../data_storage/video_clips/positive/crash_6.mp4",
     "src_pts": [[460, 183], [665, 159], [915, 458], [572, 504]],
     "pixel_to_meter": 0.05,
@@ -85,7 +85,7 @@
     "require_stuck_vehicle": false
   },
   "CAM_CRASH_7": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "7e37128e-5e2c-4b66-b914-f5b8166b5075",
     "source": "../data_storage/video_clips/positive/crash_7_CP2.mp4",
     "src_pts": [[403, 199], [852, 209], [770, 554], [77, 397]],
     "pixel_to_meter": 0.02,
@@ -98,7 +98,7 @@
     "dist_thresh": 3.0
   },
   "CAM_CRASH_8":  {
-    "uuid": "cho Phuc gui de dien after",
+    "uuid": "bf67b489-251f-4033-8b25-ea80be12d0c2",
     "source": "../data_storage/video_clips/positive/crash_8.mp4",
     "src_pts": [[326, 307], [441, 401], [255, 490], [174, 376]],
     "pixel_to_meter": 0.02,
@@ -111,7 +111,7 @@
     "require_stuck_vehicle": false
   },
   "CAM_CRASH_9": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "2a09fd34-e4d3-4f7d-8bdb-6e2b166a581d",
     "source": "../data_storage/video_clips/positive/crash_9.mp4",
     "src_pts": [[448, 382], [572, 377], [631, 454], [441, 484]],
     "pixel_to_meter": 0.01,
@@ -124,7 +124,7 @@
   },
 
   "CAM_CRASH_10":  {
-    "uuid": "cho Phuc gui de dien after",
+    "uuid": "16d257e4-173c-4330-b1d4-4deab5faaac0",
     "source": "../data_storage/video_clips/positive/crash_10.mp4",
     "src_pts": [[326, 307], [441, 401], [255, 490], [174, 376]],
     "pixel_to_meter": 0.02,
@@ -139,7 +139,7 @@
   },
 
   "CAM_CRASH_11": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐiỀN_SAU",
+    "uuid": "aea04f63-5ecc-4f1c-a5c1-84a75983bb0b",
     "source": "../data_storage/video_clips/positive/crash_11.mp4",
     "src_pts": [[514, 362], [870, 332], [861, 553], [400, 532]],
     "pixel_to_meter": 0.08,
@@ -155,7 +155,7 @@
   },
 
   "CAM_CRASH_12": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐiỀN_SAU",
+    "uuid": "d112378c-5118-45c9-bb34-0f5c2925a46f",
     "source": "../data_storage/video_clips/positive/crash_12.mp4",
     "src_pts": [[179, 226], [411, 225], [558, 502], [191, 507]],
     "pixel_to_meter": 0.03,
@@ -171,7 +171,7 @@
   },
 
   "CAM_NOR_1": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "9f79df36-e35a-40b3-a2be-e490b636d079",
     "source": "../data_storage/video_clips/negative/normal_1.mp4",
     "src_pts": [[271, 363], [365, 362], [293, 467], [156, 462]],
     "pixel_to_meter": 0.035,
@@ -180,10 +180,11 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "require_stuck_vehicle": false
   },
   "CAM_NOR_2": {
-    "uuid": "Cho Phuc Gui",
+    "uuid": "fe0eabba-f97c-4452-8d75-639cfe678abb",
     "source": "../data_storage/video_clips/negative/normal_2.mp4",
     "src_pts": [[340, 273], [658, 269], [665, 327], [298, 334]],
     "pixel_to_meter": 0.02,
@@ -195,7 +196,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_3": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "53c0f4bb-5633-404c-a959-18633211b58f",
     "source": "../data_storage/video_clips/negative/normal_3.mp4",
     "src_pts": [[373, 345], [739, 348], [746, 380], [360, 377]],
     "pixel_to_meter": 0.02,
@@ -204,10 +205,11 @@
     "horizon_y": 200,
     "y_split": 400,
     "thresh_near": -6.0,
-    "thresh_far": -9.0
+    "thresh_far": -9.0,
+    "require_stuck_vehicle": true
   },
   "CAM_NOR_4": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "829c7e08-a604-44b5-b80d-e4cc5c9c11da",
     "source": "../data_storage/video_clips/negative/normal_4.mp4",
     "src_pts": [[373, 345], [739, 348], [746, 380], [360, 377]],
     "pixel_to_meter": 0.02,
@@ -219,7 +221,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_5": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "8e22a76c-0a96-4d6f-88c7-e91dffbf516b",
     "source": "../data_storage/video_clips/negative/normal_5.mp4",
     "src_pts": [[373, 345], [739, 348], [746, 380], [360, 377]],
     "pixel_to_meter": 0.02,
@@ -231,7 +233,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_6": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "f53450b4-8af2-43fc-962a-2e22a1994a22",
     "source": "../data_storage/video_clips/negative/normal_6.mp4",
     "src_pts": [[384, 191], [696, 181], [904, 401], [341, 534]],
     "pixel_to_meter": 0.05,
@@ -243,7 +245,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_7": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "4d83fba6-b259-4109-b6c1-0151adf53bf1",
     "source": "../data_storage/video_clips/negative/normal_7.mp4",
     "src_pts": [[384, 191], [696, 181], [904, 401], [341, 534]],
     "pixel_to_meter": 0.05,
@@ -255,7 +257,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_8": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "eaaedb4f-44db-4e84-ae3d-b6ef270f7d02",
     "source": "../data_storage/video_clips/negative/normal_8.mp4",
     "src_pts": [[360, 181], [602, 128], [839, 285], [512, 535]],
     "pixel_to_meter": 0.05,
@@ -267,7 +269,7 @@
     "thresh_far": -9.0
   },
   "CAM_NOR_9": {
-    "uuid": "CHỜ_PHÚC_GỬI_ĐỂ_ĐIỀN_SAU",
+    "uuid": "2ea213fe-4ae9-4886-aa27-3800084fced5",
     "source": "../data_storage/video_clips/negative/normal_9.mp4",
     "src_pts": [[360, 181], [602, 128], [839, 285], [512, 535]],
     "pixel_to_meter": 0.05,

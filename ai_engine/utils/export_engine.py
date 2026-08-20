@@ -3,7 +3,7 @@ from ultralytics import YOLO
 print("[HỆ THỐNG] Khởi tạo quá trình biên dịch mô hình sang TensorRT...")
 
 # 1. Tải mô hình gốc định dạng PyTorch
-model = YOLO("yolov8n.pt")
+model = YOLO("../yolo11s.pt")
 
 # 2. Thực thi lệnh Export
 # format="engine": Chọn chuẩn TensorRT
