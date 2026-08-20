@@ -1,0 +1,134 @@
+truyền file "cameras_config.json"
+nhập camera_id
+
+lưu các dữ liệu cấu hình cho tính toán
+
+truyền YOLO
+
+lấy path của video (của camera)
+
+đọc video và cấu hình thành 30fps --- 140
+
+Bật luồng mạng --- 142-145
+
+Khởi tạo các biến trạng thái của thuật toán động học như:
++ active_trackers     -> lưu danh sach các Obj của vật thể (obj gồm các thuộc tính thông số đã được tính toán) đang xuất hiện trong frame hiện tại
++ active_incidents    -> ds các vụ tai nạn hiện tại -> để ktra biết tai nạn trùng lặp
++ pending_incidents   -> ds các trường hợp nghi ngờ tai nạn
++ COOLDOWN_FRAMES     -> số frames chống cảnh báo kể từ khi có tai nạn -> tránh cảnh báo trùng
++ SPATIAL_COOLDOWN_METERS -> bán kính khoanh vùng của vụ tai nạn -> tránh cảnh báo trùng trong phạm vi bán kính này
++ VALIDATION_FRAMES   -> thời gian (đơn vị là frame) để kiểm chứng từ nghi ngờ thành quyết định có phải tai nạn ko
+
+-- một số dòng code phục vụ việc hiển thị cảnh báo trên màn hình trong 5s --
+
+BẮT ĐẦU LOGIC:
+---------------
+rút frame từ reader
+tăng frame_count
+
+Khởi chạy YOLO detecting and tracking trên frame với các thống số cấu hình: {
+    + classes=[....]    -> ds lớp (loại) đối tượng sẽ được detect và track
+    + persist=True      -> quyết định mô hình có ghi nhớ Id của đối tượng từ frame trước qua frame sau ko (gọi là tracking)
+    + imgsz=1024        -> thay đổi kích thước ảnh thành 1024x1024
+    + agnostic_nms=False-> Xóa vật thể nếu bị đè bởi vật thể lớp khác
+    + tracker="botsort.yaml" -> chọn thuật toán BoTSORT để tracking
+    + conf=0.2          -> điểm tin cậy, YOLO giữ lại vật thể mà nó chắc chắn 20% trở lên
+    + iou=0.7           -> vùng giao hai vật thể, nếu hai hộp (vật thể) đè lên nhau, hộp có conf thấp hơn sẽ bị xóa
+    + verbose=False     -> in log
+} và gán kết quả vào biến result
+
+Tạo mảng current_frame_ids để lưu ds id của các đối tượng vừa được YOLO phát hiện trong frame hiện tại
+
+kiểm tra nếu có ds id của các hộp trong frame hiện tại thì thực hiện các lệnh dưới:
+    boxes = ds tọa độ các box (vật thể)
+    ids = ds id kiểu int tương ứng
+    cls_ids = ds tên loại phương tiện của mỗi vật thể tương ứng
+
+    duyệt qua ds của vật thể với 3 thuộc tính: box, track_id và cls_id:
+        cho track_id vào current_frame_ids
+
+        ktr nếu track_id hiện tại chưa được tạo Obj (Đồng nghĩa chưa nằm trong ds active_trackers):
+            thì tạo đối tượng VehicleTrack mới cho track_id đó và cho vào active_trackers để lần sau bt là id này đã được tạo Obj rồi
+
+        lấy 4 gtri x_min, y_min, x_mã, y_max của box của vật thể (mỗi tổ hợp x-y là một trong 4 góc của box đó)
+        speed = vận tốc mới nhất trong lịch sử vận tốc của các frame trước đó của Obj hiện tại
+
+        vẽ khung box gồm id và vận tốc lên màn hình
+
+    -- Hết duyệt --  ==> vòng lặp duyệt này chỉ dùng để vẽ bounding box cho vật thể
+
+    Khởi tạo ds các id rác là ids_to_kill
+
+    duyệt từng cặp id trong ds id của fame hiện tại - current_frame_ids:
+        nếu cả hai id (hai vật thể đều đã được tạo Obj (đều có trong active_trakcers) :
+            tiến hành tính IOS (tỉ lệ bị đè của box nhỏ)
+            nếu tỉ lệ này trên 70%, nghĩa là có một box bị đè trên 70% bởi một box to hơn:
+                thì tính tuổi của 2 id và cho id nào có tuổi nhỏ hơn vào ds id rác để xóa (xóa id mới và giữ lại id cũ)
+    -- Hết duyệt --  ==> vòng lặp duyệt này chỉ dùng để xác định id rác bị detect dư của một vật thể và chỉ giữ lại một id/vật thể
+
+    lần lượt xóa các id rác khỏi current_frame_id và các đối tượng của nó trong active_trackers
+
+    ** Logic xác định tai nạn **
+    lấy danh sách id của các Obj trong active_trackers gán vào all_active_ids
+    duyệt từng cặp id trong ds id của fame hiện tại - current_frame_ids:
+        gán id 2 xe vào id_a và id_B
+        và gán Obj 2 xe vào vehicle_A và vehicle_B
+        Kiểm tra thuộc tính is_reported của 2 đối tượng, true cả hai nghĩa là đây là vụ tai nạn trùng thì bỏ qua ko tính toán nữa, nếu ko thì chạy tính tiếp bước dưới...
+        kiểm tra tiếp nếu ít nhất 1 xe ko có box cũng bỏ qua luôn, nếu ko tính tiếp bên dưới...
+        Lấy tung độ của mỗi xe (tung độ của tâm điểm box) gán vào cy_A và cy_B
+        Kiểm tra nếu ít nhất 1 xe nằm ngoài phạm vi tính toán (là chỉ số horizon_y trong config của camera để loại vùng chân trời sai số lớn):
+            thì cũng bỏ qua luôn để tránh tính sai số lớn
+        Tính điểm giao nhau của 2 phương tiện gán vào iou_score
+
+
+        Lấy vị trí trên ma trận đường chim bay của mỗi xe gán vào bev_A và bev_B ==> vị trí thực tế ngoài đời
+        tính khoảng khách bằng đvi pixel giữa bev_A và bev_B (dùng Euclid)
+        chuyển khoảng cách thành đvi mét -> real_dist_meters
+
+
+        gán dist_limit làm khoảng cách tối đa của 2 xe làm phạm vi nghi ngờ va chạm
+        lấy iou_limit là 0.03 làm giới hạn tối thiểu giao nhau nhỏ nhất giữa 2 xe
+        Nếu real_dist_meters nằm trong dist_limit và iou_score từ iou_limit trở lên thì đây là nguy cơ tai nạn và tính ben dưới:
+            Tính gia tốc của 2 xe sau khi được giảm nhiễu (nhiễu do giật box gây gia tốc lớn nếu thời gian quá ngắn ví dụ trong 1 frame)
+            lấy vận tốc của 2 xe
+            lấy vận tốc lớn nhất trong 5 frame gần nhất của mỗi xe
+            Tính độ lệch vận tốc của mỗi xe : delta_v_A và delta_v_B
+            In LOG ra terminal
+
+            Kiểm tra trường hợp bóng ma (là xe đột nhiên bị mất tracking trên frame):
+            is_ghost_A và is_ghót_B lưu trạng thái kiểm tra liệu Obj của xe đã có thuộc tính lost_frames và số lost_frames có > 0 ko
+            nếu ít nhất 1 xe bị mất dấu (gọi là bóng ma và í_ghost_A/B = True) và iou 2 xe > 0.4:
+                thì bỏ qua không tính toán nữa vì nếu nó là bóng ma thì nghĩa là id này ko còn thuộc về xe và xe đó đã có id khác
+
+            Bỏ qua trường hợp nếu 2 xe đi quá chậm < 5km/h (vì khả năng này xảy ra taii nạn cực thấp và camera dễ lầm rằng hai xe tông nhau bị giảm tốc)
+
+            Tính ngưỡng gia tốc động qua các thông số từ cameras_config:
+            t_near = thresh_near  -> ngưỡng biến động gia tốc tối thiểu để báo động dành cho tọa độ gần camera
+            t_far = thresh_far    -> ngưỡng biến động gia tốc tối thiểu để báo động dành cho tọa độ xa camera
+            y_split = y_split     -> mốc tọa độ Y (pixel) phân định vùng cận cảnh. Từ vạch này trở xuống đáy màn hình, xe to và rõ, AI nhận diện ổn định nên hệ thống áp dụng ngưỡng t_near
+            horizon_y = horizon_y -> phân định vùng viễn cảnh. Từ vạch này hắt lên đỉnh màn hình, xe bé và AI dễ nhận diện giật/nhiễu, hệ thống bắt buộc áp dụng ngưỡng khắt khe t_far để triệt tiêu báo động giả.
+
+            Tính ngưỡng gia tốc tối thiểu để báo động cho 2 xe : thresh_A và thresh_B
+            edge_A và edge_B làm flag để xác định xe có bị nằm trên cạnh biên của góc nhìn camera không
+
+            *** Trường hợp là tai nạn thứ nhất ***
+            xđ là va chạm vật lí khi ktra iou_score >0.15 và real_dist_meters < 2.5 và edge_A và edge_B đều False, kiểm tra cả 3 đkiện này và lưu vào is_physical_crush
+            ***                                ***
+
+            kiểm tra nếu vận tốc xe quá nhỏ ( < 2km/h) xđ xe này đang dừng đổ từ trước chứ ko phải bị tai nạn (thực hiện bằng cách thêm xe vào ds background_objs)
+
+            Tạo vùng đệm là box_exp cho mỗi xe vì nếu tông nhau ngang với camera và 2 box chỉ chạm vào nhau chứ ko giao gây missing, nên cần phần đệm "va chạm tiềm năng" này
+
+            xác định xe có phải bị đâm sốc bằng cách ktra gia tốc hiện tại với ngưỡng thresh và vận tốc > 5km/h (ko phải xe chạy rà rà)
+
+            *** quan trọng ***
+            luật phản ứng vật lí của tai nạn gồm ít nhất 1 trong ba trường hợp: sau va chạm 1 xe bị đứng lại, hoặc gia tốc < -3, hoặc vận tốc thay đổi > 4.5 km/h
+            ***            ***
+
+            *** Trường hợp là tai nạn số 2 ***
+            xđ là tai nạn dựa trên động học: is_kinematic_shock = (real_dist_meters < 5.0) and (iou_expanded > 0.01) and \
+                 ((valid_shock_A and flinch_B) or (valid_shock_B and flinch_A)) and \
+                 not (edge_A or edge_B)
+
+            *** Quyết định có phải tai nạn hay không ***
+            Nếu là va chạm vật lí (is_physical_crush = True) hoặc va chạm qua tính toán động học:

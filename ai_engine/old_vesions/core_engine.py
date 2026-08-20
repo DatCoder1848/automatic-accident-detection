@@ -200,7 +200,7 @@ if __name__ == "__main__":
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_CRASH_3" #"CAM_NOR_1" #  Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID = "CAM_CRASH_6"  # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLOv8...")
-    model = YOLO("trash/yolov8n.pt")
+    model = YOLO("../trash/yolov8n.pt")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
@@ -258,7 +258,7 @@ if __name__ == "__main__":
             frame_count += 1
 
             # --- CHẠY YOLO TRACKING ---
-            results = model.track(frame, classes=[2, 3, 5, 7], persist=True, imgsz=1024, agnostic_nms=True, tracker="bytetrack.yaml", conf=0.2, iou=0.5, verbose=False)
+            results = model.track(frame, classes=[2, 3, 5, 7], persist=True, tracker="bytetrack.yaml", verbose=False)
 
             current_frame_ids = []
 
@@ -286,7 +286,7 @@ if __name__ == "__main__":
                     cv2.putText(frame, f"ID:{track_id} v:{speed:.1f}", (x_min, y_min - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-                    # 2.2 LOGIC BẮT VA CHẠM ĐÃ ĐƯỢC SIẾT CHẶT VÀ BỔ SUNG LOG DEBUG
+                    # 2.2 LOGIC BẮT VA CHẠM ĐÃ ĐƯỢC SIẾT CHẶT
                     for i in range(len(current_frame_ids)):
                         for j in range(i + 1, len(current_frame_ids)):
                             id_A = current_frame_ids[i]
@@ -295,44 +295,23 @@ if __name__ == "__main__":
                             vehicle_A = active_trackers[id_A]
                             vehicle_B = active_trackers[id_B]
 
-                            # 1. Tính độ giao nhau trên ảnh 2D
                             iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
 
-                            if iou_score > 0.1:
-                                # 2. RÚT TỌA ĐỘ BẺ CONG BEV ĐỂ TÍNH KHOẢNG CÁCH THỰC TẾ
-                                bev_A = vehicle_A.centroids_bev[-1]
-                                bev_B = vehicle_B.centroids_bev[-1]
-
-                                # Tính khoảng cách bằng pixel trên ảnh BEV
-                                pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
-
-                                # Đổi ra khoảng cách bằng MÉT ngoài đời thực
-                                real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
-
+                            # LỚP LỌC 1: Tăng ngưỡng va chạm vật lý lên 30% diện tích (Tránh ảo giác 2D)
+                            if iou_score > 0.3:
                                 a_A = vehicle_A.acceleration
                                 a_B = vehicle_B.acceleration
+
+                                # Lấy vận tốc hiện tại
                                 v_A = vehicle_A.velocities[-1] if len(vehicle_A.velocities) > 0 else 0.0
                                 v_B = vehicle_B.velocities[-1] if len(vehicle_B.velocities) > 0 else 0.0
 
-                                # --- HỆ THỐNG LOG DEBUG CHUYÊN SÂU ---
-                                # Chỉ in log khi 2 xe ở gần nhau dưới 5 mét VÀ 1 trong 2 xe có dấu hiệu phanh (gia tốc âm)
-                                if real_dist_meters < 5.0 and (a_A < -1.0 or a_B < -1.0):
-                                    print(
-                                        f"\n[DEBUG-AI] Frame {frame_count} | Đối tượng: {vehicle_A.vehicle_type}(ID:{id_A}) & {vehicle_B.vehicle_type}(ID:{id_B})")
-                                    print(
-                                        f"  -> IoU 2D: {iou_score:.2f} | Khoảng cách thực tế: {real_dist_meters:.1f} mét")
-                                    print(f"  -> Động học ID {id_A}: Vận tốc={v_A:.1f} km/h | Gia tốc={a_A:.1f}")
-                                    print(f"  -> Động học ID {id_B}: Vận tốc={v_B:.1f} km/h | Gia tốc={a_B:.1f}")
-
-                                # 3. LỚP LỌC KÉP KHẮC NGHIỆT
-                                # Điều kiện 1: Thực sự chạm nhau ngoài đời (cách nhau dưới 2 mét)
-                                is_close_enough = real_dist_meters < 2.0
-
-                                # Điều kiện 2: Giảm tốc cực sốc (-6 km/h trong 0.1s) và phải dừng hẳn (< 5 km/h)
+                                # LỚP LỌC 2 & 3: Va chạm = Giảm tốc độ mạnh (<= -6 km/h trên mỗi 0.1s)
+                                # VÀ phải dẫn đến dừng xe hoặc bò lết (vận tốc < 5 km/h)
                                 is_crash_A = (a_A <= -6.0) and (v_A < 5.0)
                                 is_crash_B = (a_B <= -6.0) and (v_B < 5.0)
 
-                                if is_close_enough and (is_crash_A or is_crash_B):
+                                if is_crash_A or is_crash_B:
                                     crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
                                     crash_cy = (vehicle_A.centroids[-1][1] + vehicle_B.centroids[-1][1]) / 2.0
 
@@ -340,22 +319,26 @@ if __name__ == "__main__":
                                     for incident in active_incidents:
                                         if frame_count - incident['frame'] < COOLDOWN_FRAMES:
                                             dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
-                                                    crash_cy - incident['centroid'][1]) ** 2)
+                                                        crash_cy - incident['centroid'][1]) ** 2)
                                             if dist < INCIDENT_RADIUS:
                                                 is_new_incident = False
                                                 break
 
                                     if is_new_incident:
-                                        active_incidents.append(
-                                            {'centroid': (crash_cx, crash_cy), 'frame': frame_count})
+                                        active_incidents.append({'centroid': (crash_cx, crash_cy), 'frame': frame_count})
                                         cv2.putText(frame, "CANH BAO: TAI NAN!", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1,
                                                     (0, 0, 255), 3)
 
-                                        # (GIỮ NGUYÊN PHẦN CODE GỌI WRITER VÀ NETWORK BÊN DƯỚI...)
+                                        # 1. TRÍCH XUẤT QUÁ KHỨ
+                                        # Rút toàn bộ ảnh đang có trong túi ra thành 1 mảng (Khoảng 5 giây)
                                         clip_frames = list(reader.history_buffer)
                                         clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
+
+                                        # 2. GIAO VIỆC CHO LUỒNG WRITER XỬ LÝ ÂM THẦM
                                         video_writer_worker.save_clip(clip_frames, clip_path)
 
+                                        # --- GIAO TIẾP MẠNG ĐA LUỒNG ---
+                                        # Đóng gói JSON (Bỏ hoàn toàn Base64 ảnh nặng nề)
                                         accident_payload = {
                                             "camera_id": CAMERA_ID,
                                             "frame_count": frame_count,
@@ -364,9 +347,11 @@ if __name__ == "__main__":
                                             "confidence_score": round(float(iou_score), 2),
                                             "alert_level": "HIGH",
                                             "vehicles_involved": [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
+                                            # Tạm thời cấu hình đường dẫn vật lý, khâu cắt video sẽ bổ sung sau
                                             "video_clip_path": f"../data_storage/video_clips/accidents/accident_{frame_count}_v2.mp4"
                                         }
 
+                                        # Ném gói tin lên băng chuyền để Luồng Mạng tự xử lý, AI tiếp tục chạy không chờ đợi!
                                         network_worker.send_alert(accident_payload)
 
             # 3. DỌN DẸP BỘ NHỚ AI

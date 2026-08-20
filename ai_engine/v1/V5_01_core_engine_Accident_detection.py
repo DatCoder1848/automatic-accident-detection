@@ -1,9 +1,9 @@
-import cv2
 import threading
 import queue
-import time
 import requests
 from collections import deque
+
+#from ai_engine.trash.main_ai import accident_payload
 
 
 class VideoReader:
@@ -84,110 +84,33 @@ class VideoReader:
 
 # =================================================================== #
 
-class NetworkWorker:
-    def __init__(self, api_url, api_key, queue_size=50):
-        self.api_url = api_url
-        self.headers = {
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
-        }
-        # Băng chuyền số 2: Chuyên chứa gói tin JSON báo cáo tai nạn chờ gửi đi
-        self.api_queue = queue.Queue(maxsize=queue_size)
-        self.stopped = False
+# THÊM HÀM NÀY BÊN NGOÀI
+def is_in_edge(box, margin=40, frame_w=1024, frame_h=576):
+    x_min, y_min, x_max, y_max = box
+    # Nếu hộp bao chạm vào vùng 40 pixel tính từ các mép camera
+    return (x_min < margin or y_min < margin or x_max > frame_w - margin or y_max > frame_h - margin)
 
-    def start(self):
-        print("[HỆ THỐNG] Đang khởi động Luồng Giao tiếp (Network Thread)...")
-        self.thread = threading.Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
-        return self
+def calculate_ios(boxA, boxB):
+    # Tính tỷ lệ Giao nhau / Diện tích của hộp bao NHỎ HƠN
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+    smaller_area = min(areaA, areaB)
+    if smaller_area == 0: return 0.0
+    return interArea / smaller_area
 
-    def send_alert(self, payload):
-        """Hàm dành cho Luồng AI: Ném gói tin lên băng chuyền rồi đi làm việc khác"""
-        if not self.api_queue.full():
-            self.api_queue.put(payload)
-        else:
-            print("\033[93m[⚠️ API NGHẼN] Băng chuyền API đã đầy! Hủy bỏ gói tin.\033[0m")
-
-    def update(self):
-        """Luồng chạy ngầm: Cứ có gói tin trên băng chuyền là nhặt ra gửi đi"""
-        while not self.stopped:
-            try:
-                # Chờ lấy gói tin (đứng đợi tối đa 1s để còn quay lại check self.stopped)
-                payload = self.api_queue.get(timeout=1)
-
-                print(
-                    f"\033[94m[🌐 API SEND] Frame: {payload.get('frame_count')} | Objects: {', '.join(payload.get('vehicles_involved', []))}...\033[0m")
-
-                # --- PHẦN KẾT NỐI SERVER THẬT (Mở comment khi có server của Phúc) ---
-                # response = requests.post(self.api_url, headers=self.headers, json=payload)
-                # if response.status_code in [200, 201]:
-                #     print("[NETWORK] Gửi thành công lên Backend!")
-                # else:
-                #     print(f"[NETWORK] Lỗi Backend trả về: {response.status_code}")
-
-                # --- TRONG LÚC CHƯA CÓ SERVER, CHÚNG TA GIẢ LẬP GỬI MẤT 0.5 GIÂY ---
-                time.sleep(0.5)
-                print(f"\033[92m[🌐 API DONE] Đã gửi thành công gói tin Frame {payload.get('frame_count')}!\033[0m")
-
-            except queue.Empty:
-                continue  # Nếu băng chuyền trống thì lặp lại vòng lặp chờ đợi
-            except Exception as e:
-                print(f"[NETWORK ERROR] Lỗi luồng mạng: {e}")
-
-    def stop(self):
-        self.stopped = True
-
-
-class VideoWriterWorker:
-    def __init__(self, fps=30.0, resolution=(1024, 576)):
-        # Băng chuyền số 3: Chứa các gói ảnh chờ ghi thành file
-        self.task_queue = queue.Queue(maxsize=10)
-        self.stopped = False
-        self.fps = fps
-        self.resolution = resolution
-
-    def start(self):
-        print("[HỆ THỐNG] Đang khởi động Luồng Ghi Video (Writer Thread)...")
-        self.thread = threading.Thread(target=self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
-        return self
-
-    def save_clip(self, frames, filepath):
-        """Hàm cho AI gọi: Quăng túi ảnh qua đây rồi đi làm việc tiếp"""
-        if not self.task_queue.full():
-            self.task_queue.put({'frames': frames, 'filepath': filepath})
-
-    def update(self):
-        """Tiến trình ngầm: Ghi file ra ổ SSD"""
-        while not self.stopped:
-            try:
-                task = self.task_queue.get(timeout=1)
-                frames = task['frames']
-                filepath = task['filepath']
-
-                print(f"\033[95m[💾 DISK WRITE] Đang xuất file bằng chứng: {filepath}...\033[0m")
-
-                # Bộ mã hóa mp4
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                out = cv2.VideoWriter(filepath, fourcc, self.fps, self.resolution)
-
-                for f in frames:
-                    out.write(f)
-                out.release()
-
-                print(f"\033[92m[💾 DISK DONE] Đã lưu thành công clip: {filepath}\033[0m")
-
-            except queue.Empty:
-                continue
-            except Exception as e:
-                print(f"[WRITER ERROR] Lỗi ghi video: {e}")
-
-    def stop(self):
-        self.stopped = True
-
-
+# HÀM BỔ TRỢ TÍNH GIA TỐC MƯỢT (CHỐNG JITTER)
+def get_smooth_accel(vehicle, frames_back=10, fps=30.0):
+    vels = list(vehicle.velocities)
+    if len(vels) < frames_back + 1:
+        return vehicle.acceleration
+    v_now = vels[-1]
+    v_past = vels[-(frames_back + 1)]
+    return (v_now - v_past) / (frames_back / fps)
 # =================================================================== #
 
 # =================================================================== #
@@ -200,10 +123,11 @@ if __name__ == "__main__":
     import time
     import cv2
     import csv
+    from cloud_service import CloudAlertManager
 
     # 1. ĐỌC CẤU HÌNH CAMERA TỪ FILE JSON
     CONFIG_FILE = "cameras_config.json"
-    CAMERA_ID = "CAM_NOR_1" # "CAM_CRASH_10" # Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
+    CAMERA_ID =   "CAM_CRASH_7" # "CAM_NOR_3" #  Chỉ cần đổi tên ID ở đây, toàn bộ hệ thống sẽ tự thay máu
 
     print(f"[HỆ THỐNG] Đang tải cấu hình cho {CAMERA_ID}...")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -215,8 +139,8 @@ if __name__ == "__main__":
     init_calibrator(cam_config)
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
-    print("[HỆ THỐNG] Đang tải mô hình YOLOv8n...")
-    model = YOLO("trash/yolov8n.pt")
+    print("[HỆ THỐNG] Đang tải mô hình YOLO11s...")
+    model = YOLO("../yolo11s.pt")#.to("cuda")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
@@ -227,17 +151,14 @@ if __name__ == "__main__":
     # Bật Luồng Mạng
     API_URL = "http://localhost:3000/accidents"
     API_KEY = "ai-service-secret-key"
-    network_worker = NetworkWorker(API_URL, API_KEY).start()
-
-    # Bật Luồng Ghi Video
-    video_writer_worker = VideoWriterWorker().start()
+    cloud_manager = CloudAlertManager(API_URL, API_KEY)
 
     # 2. KHỞI TẠO CÁC BIẾN TRẠNG THÁI CỦA THUẬT TOÁN ĐỘNG HỌC
     active_trackers = {}
     active_incidents = []
     pending_incidents = []  # Hàng đợi chứa các Vùng nghi ngờ
-    INCIDENT_RADIUS = 200
-    COOLDOWN_FRAMES = 200
+    COOLDOWN_FRAMES = 900
+    SPATIAL_COOLDOWN_METERS = 12.0
     VALIDATION_FRAMES = 90  # Thời gian kiểm chứng 3 giây (30fps * 3s)
 
     # Các biến bổ sung phục vụ hiển thị UI cảnh báo giữ trong 5 giây
@@ -278,7 +199,7 @@ if __name__ == "__main__":
 
             # --- CHẠY YOLO TRACKING ---
             results = model.track(frame, classes=[2, 3, 5, 7], persist=True, imgsz=1024, agnostic_nms=False,
-                                  tracker="custom_tracker.yaml", conf=0.2, iou=0.7, verbose=False, device=0)
+                                  tracker="botsort.yaml", conf=0.2, iou=0.7, verbose=False) #, device=0)
 
             current_frame_ids = []
 
@@ -306,29 +227,57 @@ if __name__ == "__main__":
                     cv2.putText(frame, f"ID:{track_id} v:{speed:.1f}", (x_min, y_min - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
+                # --- NHÁT CẮT 2: CODE DỌN DẸP 1 XE 2 ID SAU KHI ĐÃ CẬP NHẬT TỌA ĐỘ ---
+                ids_to_kill = set()
+                for i in range(len(current_frame_ids)):
+                    for j in range(i + 1, len(current_frame_ids)):
+                        id_1 = current_frame_ids[i]
+                        id_2 = current_frame_ids[j]
 
-                        # -------------------------------------------------------------------------
+                        if id_1 in active_trackers and id_2 in active_trackers:
+                            box_1 = active_trackers[id_1].current_box
+                            box_2 = active_trackers[id_2].current_box
+
+                            # Tính IoS giữa 2 ID này
+                            ios_dup = calculate_ios(box_1, box_2)
+
+                            # Nếu đè nhau quá 65% -> 100% là 1 xe bị nhận diện thành 2 ID
+                            if ios_dup > 0.7:
+                                age_1 = len(active_trackers[id_1].centroids)
+                                age_2 = len(active_trackers[id_2].centroids)
+
+                                # Khai tử ID nào mới sinh ra (tuổi nhỏ hơn)
+                                if age_1 > age_2:
+                                    ids_to_kill.add(id_2)
+                                else:
+                                    ids_to_kill.add(id_1)
+
+                # Xóa các ID giả khỏi current_frame_ids trước khi hệ thống kịp đưa chúng vào tính toán va chạm
+                current_frame_ids = [tid for tid in current_frame_ids if tid not in ids_to_kill]
+                # Loại bỏ ID giả khỏi frame hiện tại và xóa luôn khỏi bộ nhớ để nó không lọt xuống dưới
+                for tid in ids_to_kill:
+                    if tid in active_trackers:
+                        del active_trackers[tid]
+                # ------------------------------------------
+            # -------------------------------------------------------------------------
 
                 # ================= ĐÃ LÙI LỀ RA NGOÀI VÒNG LẶP =================
                 # ================= BẮT ĐẦU KHỐI LOGIC LÕI =================
-                # HÀM BỔ TRỢ TÍNH GIA TỐC MƯỢT (CHỐNG JITTER)
-                def get_smooth_accel(vehicle, frames_back=3, fps=30.0):
-                    vels = list(vehicle.velocities)
-                    if len(vels) < frames_back + 1:
-                        return vehicle.acceleration
-                    v_now = vels[-1]
-                    v_past = vels[-(frames_back + 1)]
-                    return (v_now - v_past) / (frames_back / fps)
 
                 # 2.2 LOGIC BẮT VA CHẠM (GIAI ĐOẠN 1: KÍCH HOẠT VÙNG NGHI NGỜ)
                 all_active_ids = list(active_trackers.keys())
-                for i in range(len(all_active_ids)):
-                    for j in range(i + 1, len(all_active_ids)):
-                        id_A = all_active_ids[i]
-                        id_B = all_active_ids[j]
+                # Dùng current_frame_ids để chỉ tính toán các xe đang có mặt trên màn hình
+                for i in range(len(current_frame_ids)):
+                    for j in range(i + 1, len(current_frame_ids)):
+                        id_A = current_frame_ids[i]
+                        id_B = current_frame_ids[j]
 
                         vehicle_A = active_trackers[id_A]
                         vehicle_B = active_trackers[id_B]
+
+                        # Neu hai xe duoc canh bao truoc do thi bo qua
+                        if vehicle_A.is_reported and vehicle_B.is_reported:
+                            continue
 
                         if vehicle_A.current_box is None or vehicle_B.current_box is None:
                             continue
@@ -340,13 +289,16 @@ if __name__ == "__main__":
 
                         iou_score = calculate_iou(vehicle_A.current_box, vehicle_B.current_box)
 
-                        if iou_score > 0.02:
-                            # Tính khoảng cách Mét thực tế
-                            bev_A = vehicle_A.centroids_bev[-1]
-                            bev_B = vehicle_B.centroids_bev[-1]
-                            pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
-                            real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
+                        # Tính toán vô điều kiện để lấy data thô
+                        bev_A = vehicle_A.centroids_bev[-1]
+                        bev_B = vehicle_B.centroids_bev[-1]
+                        pixel_dist = math.sqrt((bev_A[0] - bev_B[0]) ** 2 + (bev_A[1] - bev_B[1]) ** 2)
+                        real_dist_meters = pixel_dist * cam_config["pixel_to_meter"]
 
+
+
+                        dist_limit = cam_config.get("dist_thresh", 5.0)
+                        if real_dist_meters < dist_limit or iou_score > 0.03:
                             # Tính toán toàn bộ thông số Động học & Không gian trước khi lọc
                             smooth_a_A = get_smooth_accel(vehicle_A)
                             smooth_a_B = get_smooth_accel(vehicle_B)
@@ -387,22 +339,20 @@ if __name__ == "__main__":
                             if (is_ghost_A or is_ghost_B) and iou_score > 0.4:
                                 continue
 
-                            # 2. TIÊU CHÍ KÍCH HOẠT (TRIGGER CONDITIONS)
-                            is_physical_crush = (iou_score > 0.2) and (real_dist_meters < 1.5)
+                            # LỌC BÒ CHẬM (CRAWLING FILTER): Bỏ qua nếu cả 2 xe đều đang đi rà rà (< 5 km/h)
+                            if max_v_A < 5.0 and max_v_B < 5.0:
+                                continue
 
-                            # +++++++++++ VÁ LỖI 3: NGƯỠNG GIA TỐC ĐỘNG HÓA +++++++++++
-                            # Lấy cấu hình từ JSON
+                            # TÍNH NGƯỠNG GIA TỐC ĐỘNG
                             t_near = cam_config.get("thresh_near", -6.0)
                             t_far = cam_config.get("thresh_far", -9.0)
                             y_split = cam_config.get("y_split", 400)
                             horizon_y = cam_config.get("horizon_y", 200)
 
 
-                            # Hàm nội suy tính ngưỡng gia tốc linh hoạt theo độ sâu Y
                             def get_dynamic_thresh(cy):
-                                if cy >= y_split: return t_near  # Gần camera -> Dùng ngưỡng thấp
-                                if cy <= horizon_y: return t_far  # Xa camera -> Dùng ngưỡng khắt khe
-                                # Khu vực giữa: Tính tỷ lệ phi tuyến
+                                if cy >= y_split: return t_near
+                                if cy <= horizon_y: return t_far
                                 ratio = (cy - horizon_y) / (y_split - horizon_y)
                                 return t_far + ratio * (t_near - t_far)
 
@@ -410,9 +360,46 @@ if __name__ == "__main__":
                             thresh_A = get_dynamic_thresh(cy_A)
                             thresh_B = get_dynamic_thresh(cy_B)
 
-                            is_kinematic_shock = (real_dist_meters < 2.5) and (
-                                        smooth_a_A < thresh_A or smooth_a_B < thresh_B)
-                            # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                            # KHÓA CHẶT RÌA MÀN HÌNH CHO CẢ 2 ĐIỀU KIỆN
+                            edge_A = is_in_edge(vehicle_A.current_box)
+                            edge_B = is_in_edge(vehicle_B.current_box)
+
+                            is_physical_crush = (iou_score > 0.15) and (real_dist_meters < 2.5) and not (
+                                        edge_A or edge_B)
+
+                            # 1. THÊM: Lưu lại danh sách các xe vốn dĩ đang đỗ (Vật thể nền / Hòn đá)
+                            background_objs = []
+                            if max_v_A < 2.0: background_objs.append(id_A)
+                            if max_v_B < 2.0: background_objs.append(id_B)
+
+
+                            # 2. SỬA: Thêm điều kiện (iou_score > 0.01) để chống báo ảo khi 2 xe không hề chạm nhau
+                            # 1. TÍNH IOU MỞ RỘNG (DILATION):
+                            # Nới rộng mỗi hộp bao ra 30 pixel để bắt các vụ đâm ngang sườn (IoU bị hụt do góc cam)
+                            def get_expanded_box(box, expand=30):
+                                return [box[0] - expand, box[1] - expand, box[2] + expand, box[3] + expand]
+
+
+                            boxA_exp = get_expanded_box(vehicle_A.current_box)
+                            boxB_exp = get_expanded_box(vehicle_B.current_box)
+                            iou_expanded = calculate_iou(boxA_exp, boxB_exp)
+
+                            # 2. KIỂM TRA ĐÀ CHẠY
+                            # Shock: Gia tốc âm sốc và khoảng cách < 5.0m (Bắt cú đâm tâm xe tải 3.4m)
+                            # Đồng thời siết chặt: Phải CÓ ĐÀ chạy thực sự (> 5.0) mới được tính là phanh gấp, tránh nhiễu tĩnh.
+                            valid_shock_A = (smooth_a_A < thresh_A) and (max_v_A > 5.0)
+                            valid_shock_B = (smooth_a_B < thresh_B) and (max_v_B > 5.0)
+
+                            # 3. LUẬT PHẢN ỨNG VẬT LÝ (FLINCH RULE):
+                            # Để là một cặp va chạm thực sự, nếu 1 xe bị sốc, xe kia bắt buộc phải là hòn đá (< 2.0)
+                            # HOẶC phải có phản ứng vật lý (a_mượt < -3.0 hoặc dV > 4.5).
+                            flinch_A = (max_v_A < 2.0) or (smooth_a_A < -3.0) or (delta_v_A > 4.5)
+                            flinch_B = (max_v_B < 2.0) or (smooth_a_B < -3.0) or (delta_v_B > 4.5)
+
+                            # 4. CHỐT KÍCH HOẠT:
+                            is_kinematic_shock = (real_dist_meters < 5.0) and (iou_expanded > 0.01) and \
+                                                 ((valid_shock_A and flinch_B) or (valid_shock_B and flinch_A)) and \
+                                                 not (edge_A or edge_B)
 
                             if is_physical_crush or is_kinematic_shock:
                                 crash_cx = (vehicle_A.centroids[-1][0] + vehicle_B.centroids[-1][0]) / 2.0
@@ -423,17 +410,21 @@ if __name__ == "__main__":
                                 is_new_suspect = True
                                 for incident in active_incidents:
                                     if frame_count - incident['frame'] < COOLDOWN_FRAMES:
-                                        dist = math.sqrt((crash_cx - incident['centroid'][0]) ** 2 + (
-                                                crash_cy - incident['centroid'][1]) ** 2)
-                                        if dist < 100:
-                                            is_new_suspect = False;
+                                        bev_inc_x, bev_inc_y = incident['bev_centroid']
+                                        dist_bev_px = math.sqrt((bev_cx - bev_inc_x) ** 2 + (bev_cy - bev_inc_y) ** 2)
+                                        dist_meters = dist_bev_px * cam_config["pixel_to_meter"]
+
+                                        if dist_meters < SPATIAL_COOLDOWN_METERS:
+                                            is_new_suspect = False
                                             break
 
                                 for pending in pending_incidents:
-                                    dist = math.sqrt((crash_cx - pending['centroid'][0]) ** 2 + (
-                                            crash_cy - pending['centroid'][1]) ** 2)
-                                    if dist < 100:
-                                        is_new_suspect = False;
+                                    bev_pend_x, bev_pend_y = pending['bev_centroid']
+                                    dist_bev_px = math.sqrt((bev_cx - bev_pend_x) ** 2 + (bev_cy - bev_pend_y) ** 2)
+                                    dist_meters = dist_bev_px * cam_config["pixel_to_meter"]
+
+                                    if dist_meters < SPATIAL_COOLDOWN_METERS:
+                                        is_new_suspect = False
                                         break
 
                                 if is_new_suspect:
@@ -451,6 +442,7 @@ if __name__ == "__main__":
                                         'start_frame': frame_count,
                                         'vehicle_types': [vehicle_A.vehicle_type, vehicle_B.vehicle_type],
                                         'ids': [id_A, id_B],
+                                        'background_objs': background_objs,
                                         'reasons': reasons_cache
                                     })
 
@@ -469,12 +461,19 @@ if __name__ == "__main__":
                     stuck_vehicles = 0
                     evidence_logs = []
 
+                    # ĐỌC CẤU HÌNH MẬT ĐỘ ĐƯỜNG TỪ JSON
+                    require_stuck = cam_config.get("require_stuck_vehicle", True)
+
                     for track_id, vehicle in active_trackers.items():
                         if hasattr(vehicle, 'lost_frames') and vehicle.lost_frames > 0:
                             continue
 
                         v_current = vehicle.velocities[-1] if len(vehicle.velocities) > 0 else 0.0
-                        if v_current > 2.0:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
+
+                        # ĐỌC NGƯỠNG ĐỘNG TỪ FILE JSON CỦA TỪNG CAMERA (Mặc định là 2.0 nếu không cấu hình)
+                        max_allowed_v = cam_config.get("validation_max_v", 2.0)
+
+                        if v_current > max_allowed_v:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
                             continue
 
                         # Đổi khoảng cách trên ảnh sang khoảng cách Mét thực tế
@@ -483,19 +482,41 @@ if __name__ == "__main__":
                         real_dist_meters = dist_px * cam_config["pixel_to_meter"]
 
                         if real_dist_meters < VALIDATION_RADIUS_METERS:
-                            track_age = len(vehicle.centroids)
+                            # NHÁT CẮT 3: TỪ CHỐI NHẬN VƠ
+                            # 1. Xe này có phải là 1 trong 2 xe liên quan ban đầu không?
                             is_original_victim = track_id in pending['ids']
-                            is_new_object = track_age < VALIDATION_FRAMES  # Xe/Người bị văng, Tracker cấp ID mới
 
-                            # Chỉ chốt tai nạn nếu vật thể nằm lại đường ĐÚNG LÀ phương tiện liên quan
-                            if is_original_victim or is_new_object:
+                            # 2. THÊM: Xe này có nằm trong danh sách DỪNG ĐỖ từ đầu không?
+                            is_background = track_id in pending.get('background_objs', [])
+
+                            # 3. SỬA: CHỈ chấp nhận xe gốc nằm lại VÀ xe đó KHÔNG PHẢI DỪNG ĐỖ
+                            if is_original_victim and not is_background:
                                 stuck_vehicles += 1
                                 evidence_logs.append(
                                     f"ID:{track_id}({vehicle.vehicle_type}) bất động cách {real_dist_meters:.1f}m")
 
-                    if stuck_vehicles >= 1:
+                    # --- QUYẾT ĐỊNH XÁC NHẬN TAI NẠN DỰA TRÊN CẤU HÌNH CAMERA ---
+                    is_crash_confirmed = False
+                    if not require_stuck:
+                        # TRƯỜNG HỢP 1: Camera hẻm
+                        # Chỉ cần qua đủ thời gian kiểm chứng 3 giây mà vùng nghi ngờ hợp lệ là chốt luôn!
+                        is_crash_confirmed = True
+                        evidence_logs.append("Xác nhận tai nạn phương tiện tốc độ cao rời khỏi hiện trường.")
+                    else:
+                        # TRƯỜNG HỢP 2: Camera đường đông / negative
+                        # Bắt buộc hiện trường phải có ít nhất 1 phương tiện bất động/dừng lại
+                        if stuck_vehicles >= 1:
+                            is_crash_confirmed = True
+
+                    if is_crash_confirmed:
                         cx, cy = pending['centroid']
-                        active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
+                        # 1. Lưu tâm BEV vào active_incidents
+                        bev_cx, bev_cy = pending['bev_centroid']
+                        active_incidents.append({'centroid': (cx, cy), 'bev_centroid': (bev_cx, bev_cy), 'frame': frame_count})
+                        # 2. Đánh dấu các ID liên quan là ĐÃ BÁO CÁO
+                        for vic_id in pending['ids']:
+                            if vic_id in active_trackers:
+                                active_trackers[vic_id].is_reported = True
                         last_incident_time = time.time()
 
                         print("\n" + "=" * 60)
@@ -509,102 +530,45 @@ if __name__ == "__main__":
                             print(f"   -> {log_msg}")
                         print("=" * 60 + "\n")
 
-                        clip_frames = list(reader.history_buffer)
-                        clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
-                        #video_writer_worker.save_clip(clip_frames, clip_path)
+                        # ==================== ĐOẠN CODE MỚI BẮT ĐẦU TỪ ĐÂY ====================
 
-                        accident_payload = {
-                            "camera_id": CAMERA_ID,
-                            "frame_count": frame_count,
-                            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            "accident_detected": True,
-                            "confidence_score": 0.85,
-                            "alert_level": "HIGH",
-                            "vehicles_involved": pending['vehicle_types'],
-                            "video_clip_path": clip_path
+                        # 1. Trích xuất ngay dữ liệu video thô từ băng chuyền quá khứ
+                        clip_frames = list(reader.history_buffer)
+
+                        # 2. Tạo Incident ID và Timestamp
+                        timestamp = datetime.now(UTC)
+                        incident_id = f"INC_{CAMERA_ID}_{frame_count}"
+
+                        vehicles_list = pending.get('vehicle_types', [])
+                        vehicles_str = ", ".join(vehicles_list) if vehicles_list else "Chưa xác định"
+
+                        # 3. Tạo Payload cơ sở (CHƯA CÓ URL)
+                        base_payload = {
+                            "cameraId": "dab65b46-7175-4417-8383-eb3e56d09d79",
+                            "incidentId": incident_id,
+                            "confidence": 0.85,
+                            "severity": "HIGH",
+                            "description": f"Phát hiện va chạm giữa: {vehicles_str}",
+                            "vehiclesInvolved": vehicles_list,
+                            "detectedAt": timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
                         }
-                        network_worker.send_alert(accident_payload)
+
+                        # 4. Giao việc cho Cloud Manager xử lý ngầm (Bắn và quên)
+                        # Hàm copy() rất quan trọng để tránh frame bị luồng AI vẽ chèn lên trong lúc luồng kia đang upload
+                        cloud_manager.process_and_send(
+                            frame=frame.copy(),
+                            clip_frames=clip_frames,
+                            base_payload=base_payload,
+                            camera_id=CAMERA_ID,
+                            frame_count=frame_count
+                        )
+                        # =====================================================================
                     else:
                         print(
                             f"\033[92m[✅ FALSE ALARM] Hủy nghi ngờ Frame {pending['start_frame']}. Hiện trường đã giải tỏa.\033[0m")
 
                 pending_incidents = surviving_pending
 
-                # --- GIAI ĐOẠN 2: KIỂM CHỨNG THEO ĐỐI TƯỢNG VÀ KHÔNG GIAN THỰC (METERS) ---
-                VALIDATION_RADIUS_METERS = 6.0  # Quét phạm vi 6 mét để bắt gọn xe trượt văng
-
-                surviving_pending = []
-                for pending in pending_incidents:
-                    age_frames = frame_count - pending['start_frame']
-
-                    if age_frames < VALIDATION_FRAMES:
-                        surviving_pending.append(pending)
-                        continue
-
-                    bev_orig_x, bev_orig_y = pending['bev_centroid']
-                    stuck_vehicles = 0
-                    evidence_logs = []
-
-                    for track_id, vehicle in active_trackers.items():
-                        if hasattr(vehicle, 'lost_frames') and vehicle.lost_frames > 0:
-                            continue
-
-                        v_current = vehicle.velocities[-1] if len(vehicle.velocities) > 0 else 0.0
-                        if v_current > 2.0:  # Bắt buộc phải bất động (v < 2.0km/h), loại bỏ xe bò rà phanh
-                            continue
-
-                        # Đổi khoảng cách trên ảnh sang khoảng cách Mét thực tế để phá vỡ ảo giác Camera
-                        curr_bev_x, curr_bev_y = vehicle.centroids_bev[-1]
-                        dist_px = math.sqrt((curr_bev_x - bev_orig_x) ** 2 + (curr_bev_y - bev_orig_y) ** 2)
-                        real_dist_meters = dist_px * cam_config["pixel_to_meter"]
-
-                        if real_dist_meters < VALIDATION_RADIUS_METERS:
-                            track_age = len(vehicle.centroids)
-                            is_original_victim = track_id in pending['ids']
-                            is_new_object = track_age < VALIDATION_FRAMES  # Xe/Người bị văng, Tracker cấp ID mới
-
-                            # Chỉ chốt tai nạn nếu vật thể nằm lại đường ĐÚNG LÀ phương tiện liên quan
-                            if is_original_victim or is_new_object:
-                                stuck_vehicles += 1
-                                evidence_logs.append(
-                                    f"ID:{track_id}({vehicle.vehicle_type}) bất động cách {real_dist_meters:.1f}m")
-
-                    if stuck_vehicles >= 1:
-                        cx, cy = pending['centroid']
-                        active_incidents.append({'centroid': (cx, cy), 'frame': frame_count})
-                        last_incident_time = time.time()
-
-                        print("\n" + "=" * 60)
-                        print(
-                            f"\033[1;31m🚨 [CRASH CONFIRMED] XÁC NHẬN TAI NẠN (TỪ NGHI NGỜ FRAME {pending['start_frame']})! 🚨\033[0m")
-                        print(
-                            f"📍 Đối tượng ban đầu: {pending['vehicle_types'][0]}(ID:{pending['ids'][0]}) & {pending['vehicle_types'][1]}(ID:{pending['ids'][1]})")
-                        print(f"🔍 Bằng chứng khởi phát: {' + '.join(pending['reasons'])}")
-                        print(f"🔍 Bằng chứng hiện trường: {stuck_vehicles} nạn nhân.")
-                        for log_msg in evidence_logs:
-                            print(f"   -> {log_msg}")
-                        print("=" * 60 + "\n")
-
-                        clip_frames = list(reader.history_buffer)
-                        clip_path = f"accident_evid_{CAMERA_ID}_{frame_count}.mp4"
-                        video_writer_worker.save_clip(clip_frames, clip_path)
-
-                        accident_payload = {
-                            "camera_id": CAMERA_ID,
-                            "frame_count": frame_count,
-                            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                            "accident_detected": True,
-                            "confidence_score": 0.85,
-                            "alert_level": "HIGH",
-                            "vehicles_involved": pending['vehicle_types'],
-                            "video_clip_path": clip_path
-                        }
-                        network_worker.send_alert(accident_payload)
-                    else:
-                        print(
-                            f"\033[92m[✅ FALSE ALARM] Hủy nghi ngờ Frame {pending['start_frame']}. Hiện trường đã giải tỏa.\033[0m")
-
-                pending_incidents = surviving_pending
 
             # 3. DỌN DẸP BỘ NHỚ AI
             active_incidents = [inc for inc in active_incidents if frame_count - inc['frame'] < COOLDOWN_FRAMES]
@@ -619,15 +583,6 @@ if __name__ == "__main__":
                     active_trackers[tid].lost_frames = 0
 
             # 4. ĐO LƯỜNG VÀ HIỂN THỊ
-            # ================= Code tính fps cũ =================== #
-            # elapsed_time = time.time() - start_time
-            # fps = frame_count / elapsed_time if elapsed_time > 0 else 0
-            #
-            # # Vẽ thanh trạng thái nền đen phía trên cùng
-            # cv2.rectangle(frame, (0, 0), (frame.shape[1], 40), (0, 0, 0), -1)
-            # cv2.putText(frame, f"AI FPS: {fps:.1f} | Frame: {frame_count}", (15, 25),
-            #             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            # ================= Hết Code tính fps cũ =================== #
             # --- DỪNG BẤM GIỜ ---
             frame_process_time = time.perf_counter() - frame_start_time
 
@@ -683,8 +638,6 @@ if __name__ == "__main__":
     finally:
         # Tắt toàn bộ hệ thống an toàn
         reader.stop()
-        network_worker.stop()
-        video_writer_worker.stop()
         cv2.destroyAllWindows()
         csv_file.close()
         print("[HỆ THỐNG] Đã tắt luồng an toàn.")

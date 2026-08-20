@@ -1,49 +1,8 @@
-import math
-
 import numpy as np
 from collections import deque
 import cv2
 
 
-# =================================================================== #
-
-# =================================================================== #
-# Kiểm tra nằm vùng mép biên của frame
-def is_in_edge(box, margin=40, frame_w=1024, frame_h=576):
-    x_min, y_min, x_max, y_max = box
-    # Nếu hộp bao chạm vào vùng 40 pixel tính từ các mép camera
-    return (x_min < margin or y_min < margin or x_max > frame_w - margin or y_max > frame_h - margin)
-
-# Tính tỉ lệ IOS
-def calculate_ios(boxA, boxB):
-    # Tính tỷ lệ Giao nhau / Diện tích của hộp bao NHỎ HƠN
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
-    interArea = max(0, xB - xA) * max(0, yB - yA)
-    areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
-    areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
-    smaller_area = min(areaA, areaB)
-    if smaller_area == 0: return 0.0
-    return interArea / smaller_area
-
-# HÀM BỔ TRỢ TÍNH GIA TỐC MƯỢT (CHỐNG JITTER)
-def get_smooth_accel(vehicle, frames_back=10, fps=30.0):
-    vels = list(vehicle.velocities)
-    if len(vels) < frames_back + 1:
-        return vehicle.acceleration
-    v_now = vels[-1]
-    v_past = vels[-(frames_back + 1)]
-    return (v_now - v_past) / (frames_back / fps)
-
-# Tính khoảng cách mét
-def calculate_real_distance_meters(bev_pt1, bev_pt2, pixel_to_meter):
-    dist_px = math.sqrt((bev_pt1[0] - bev_pt2[0]) ** 2 + (bev_pt1[1] - bev_pt2[1]) ** 2)
-    return dist_px * pixel_to_meter
-# =================================================================== #
-
-# =================================================================== #
 
 # ============================== HÀM TÍNH TOÁN VÙNG GIAO NHAU (IoU) =============================== #
 def calculate_iou(boxA, boxB):

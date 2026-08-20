@@ -215,7 +215,7 @@ if __name__ == "__main__":
 
     # 2. KHỞI TẠO CÁC CÔNG NHÂN VÀ MÔ HÌNH
     print("[HỆ THỐNG] Đang tải mô hình YOLOv8...")
-    model = YOLO("trash/yolov8n.pt")
+    model = YOLO("../trash/yolov8n.pt")
 
     # Lấy đường dẫn video động từ JSON
     test_video_path = cam_config["source"]
