@@ -39,6 +39,9 @@ export default function AccidentDetail() {
         <Descriptions bordered column={2}>
           <Descriptions.Item label="Camera">{accident.camera?.name || 'Unknown'}</Descriptions.Item>
           <Descriptions.Item label="Location">{accident.camera?.location || '-'}</Descriptions.Item>
+          {accident.incidentId && (
+            <Descriptions.Item label="Incident ID">{accident.incidentId}</Descriptions.Item>
+          )}
           <Descriptions.Item label="Confidence">{(accident.confidence * 100).toFixed(0)}%</Descriptions.Item>
           <Descriptions.Item label="Severity">
             <Tag color={severityColors[accident.severity]}>{accident.severity}</Tag>

@@ -34,6 +34,7 @@ model Camera {
   location  String
   streamUrl String       @map("stream_url")
   status    CameraStatus @default(ACTIVE)
+  aiConfig  Json?        @map("ai_config")
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
@@ -44,6 +45,7 @@ model Camera {
 
 model Accident {
   id          String         @id @default(uuid())
+  incidentId  String?        @map("incident_id")
   cameraId    String         @map("camera_id")
   detectedAt  DateTime       @default(now()) @map("detected_at")
   confidence  Float

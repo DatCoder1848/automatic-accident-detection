@@ -13,8 +13,9 @@ export class AccidentsService {
 
   async create(data: any) {
     // Only pass fields that exist in the Accident model
-    const { cameraId, confidence, severity, description, detectedAt, videoClipUrl, thumbnailUrl, vehiclesInvolved, latitude, longitude } = data;
+    const { cameraId, incidentId, confidence, severity, description, detectedAt, videoClipUrl, thumbnailUrl, vehiclesInvolved, latitude, longitude } = data;
     const cleanData: any = { cameraId, confidence, severity };
+    if (incidentId) cleanData.incidentId = incidentId;
     if (description) cleanData.description = description;
     if (detectedAt) cleanData.detectedAt = new Date(detectedAt);
     if (videoClipUrl) cleanData.videoClipUrl = videoClipUrl;
